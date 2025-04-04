@@ -1,113 +1,129 @@
 import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import { useEffect, useState } from "react";
+import Head from "next/head";
+import Link from "next/link";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+// Import Press Start 2P font
+import { Press_Start_2P } from "next/font/google";
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const pressStart2P = Press_Start_2P({
+  weight: "400",
   subsets: ["latin"],
+  variable: "--font-press-start",
 });
 
 export default function Home() {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+
+  useEffect(() => {
+    setIsLoaded(true);
+  }, []);
+
+  // Simulate wallet connection
+  const connectWallet = () => {
+    if (walletConnected) {
+      setWalletConnected(false);
+      setWalletAddress("");
+      return;
+    }
+    
+    // Mock wallet connection
+    const mockAddress = "0x" + Math.random().toString(16).substring(2, 14) + "...";
+    setWalletAddress(mockAddress);
+    setWalletConnected(true);
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
+    <div className={`${pressStart2P.variable} min-h-screen relative overflow-hidden`}>
+      <Head>
+        <title>RWA DeFi - Real World Assets on the Blockchain</title>
+        <meta name="description" content="Bringing real world assets to DeFi with our revolutionary blockchain platform" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+
+      {/* Pixel art forest house background */}
+      <div className="absolute inset-0 w-full h-full z-0">
+        <Image 
+          src="/page_bg.svg" 
+          alt="Pixel Art Forest House" 
+          layout="fill"
+          objectFit="cover"
+          quality={100}
           priority
         />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              pages/index.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </div>
+
+      {/* Yellow particles animation */}
+      <div className="absolute inset-0 z-10 pointer-events-none">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div 
+            key={i}
+            className="absolute w-1 h-1 bg-[#FFC107] rounded-full animate-pulse"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 5}s`,
+              animationDuration: `${3 + Math.random() * 7}s`
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div className="relative z-20 w-full h-full min-h-screen">
+        <header className="container mx-auto flex justify-between items-center pt-6 px-4">
+          <Link href="/" className="flex items-center cursor-pointer">
+            <div className="bg-black/30 backdrop-blur-sm p-2 rounded">
+              <Image 
+                src="/images/pixel-logo.svg" 
+                alt="RWA DeFi Logo" 
+                width={45} 
+                height={45}
+                priority
+              />
+            </div>
+            <h1 className="ml-4 text-xl font-bold text-white">RWA<span className="text-[#FFD54F]">DeFi</span></h1>
+          </Link>
+          <nav className="hidden md:flex gap-6">
+            <Link href="/listing" className="pixel-btn bg-transparent backdrop-blur-sm border-[#6200EA] border-2 py-2 px-3 text-xs text-white hover:bg-[#6200EA]/50 transition-colors">Listing</Link>
+            <Link href="/derivative" className="pixel-btn bg-transparent backdrop-blur-sm border-[#4CAF50] border-2 py-2 px-3 text-xs text-white hover:bg-[#4CAF50]/50 transition-colors">Derivative</Link>
+          </nav>
+          <button 
+            onClick={connectWallet} 
+            className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            {walletConnected ? walletAddress : "Connect Wallet"}
+          </button>
+        </header>
+
+        <main className="container mx-auto flex items-center px-4" style={{ minHeight: "calc(100vh - 100px)" }}>
+          <div className={`w-full md:w-1/2 backdrop-blur-sm bg-black/30 p-6 rounded-lg ${isLoaded ? 'pixel-animation' : 'opacity-0'}`} style={{ animationDelay: '0.3s' }}>
+            <h2 className="pixel-header text-lg mb-6 inline-block">Real World Assets</h2>
+            <h3 className="text-3xl font-bold mb-6 text-white pixel-text">Tokenize Your <br /> Real World <span className="text-[#FFD54F]">Assets</span></h3>
+            <p className="mb-8 text-sm pixel-text text-white/90">
+              Transform physical properties into blockchain tokens with our revolutionary DeFi platform. 
+              List properties, create derivatives, borrow against your assets, and build your digital real estate portfolio.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button className="pixel-btn bg-[#6200EA] text-xs py-3 px-6 text-white">Launch App</button>
+              <button className="pixel-btn bg-transparent border-white border-2 text-xs py-3 px-6 text-white hover:bg-white/10">Learn More</button>
+            </div>
+          </div>
+        </main>
+
+        <footer className="container mx-auto py-6 px-4 relative z-20">
+          <div className="flex flex-col md:flex-row justify-between items-center backdrop-blur-sm bg-black/30 p-4 rounded-lg">
+            <p className="text-xs text-white/70">© 2025 RWA DeFi. All rights reserved.</p>
+            <div className="flex gap-4 mt-4 md:mt-0">
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Discord</a>
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Twitter</a>
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Docs</a>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
