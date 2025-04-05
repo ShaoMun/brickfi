@@ -283,4 +283,117 @@ export default function Listing() {
     }
   };
 
+  // Function to preprocess image for better OCR results
+  const preprocessImage = (imageSrc: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          resolve(imageSrc); // Return original if canvas not available
+          return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imageSrc);
+          return;
+        }
+        
+        // Set canvas dimensions to match image
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw original image
+        ctx.drawImage(img, 0, 0);
+        
+        // Apply preprocessing - more advanced image processing for better OCR
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Advanced preprocessing pipeline
+        // 1. Convert to grayscale
+        for (let i = 0; i < data.length; i += 4) {
+          const avg = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; // Proper luminance formula
+          data[i] = avg;     // Red
+          data[i + 1] = avg; // Green
+          data[i + 2] = avg; // Blue
+        }
+        
+        // 2. Apply contrast enhancement
+        const contrastFactor = 1.5; // Increase contrast
+        const intercept = 128 * (1 - contrastFactor);
+        
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = data[i] * contrastFactor + intercept;
+          data[i + 1] = data[i + 1] * contrastFactor + intercept;
+          data[i + 2] = data[i + 2] * contrastFactor + intercept;
+        }
+        
+        // 3. Apply thresholding for text documents like passports
+        // This works better for documents with clear text
+        if (documentType === "passport") {
+          const threshold = 120;
+          for (let i = 0; i < data.length; i += 4) {
+            const val = data[i] > threshold ? 255 : 0;
+            data[i] = val;     // Red
+            data[i + 1] = val; // Green
+            data[i + 2] = val; // Blue
+          }
+        }
+        
+        // 4. Noise reduction (simple)
+        // Skip for simplicity, but could be added
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Get processed image as data URL
+        resolve(canvas.toDataURL('image/png'));
+      };
+      
+      img.src = imageSrc;
+    });
+  };
+
+  // Function to hash data for encryption
+  const hashData = (data: string): string => {
+    // In a real production app, you'd use a more secure encryption method
+    // and potentially store the hash on a secure blockchain or use the Web Crypto API
+    try {
+      // Simple simulation of hashing using base64 encoding + random salt
+      // Note: This is NOT secure for production use
+      const encoder = new TextEncoder();
+      const encodedData = encoder.encode(data);
+      const salt = Math.random().toString(36).substring(2, 15);
+      
+      // Simulate hashing with salt
+      const base64 = btoa(String.fromCharCode.apply(null, Array.from(encodedData)));
+      return `hashed_${base64.substring(0, 20)}_${salt}`;
+    } catch (error) {
+      console.error("Error hashing data:", error);
+      return "hash_error";
+    }
+  };
+
+  // Handle document upload
+  const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    const file = files[0];
+    setDocumentFile(file);
+    
+    // Reset scanning states when new document is uploaded
+    setScanComplete(false);
+    setExtractedText("");
+    
+    // Create preview for the uploaded document
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setDocumentPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  
 } 
