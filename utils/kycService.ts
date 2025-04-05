@@ -184,13 +184,7 @@ export class KYCService {
     nationality: string;
     isUSCitizen: boolean;
     documentNumber?: string;
-  }): Promise<{ 
-    success: boolean; 
-    txHash?: string; 
-    error?: string;
-    sbtMinted?: boolean;
-    sbtTokenId?: number;
-  }> {
+  }): Promise<{ success: boolean; txHash?: string; error?: string }> {
     await this.ensureInitialized();
     
     return this.executeWithFallback(
@@ -244,43 +238,9 @@ export class KYCService {
         const kycStatus = await this.hasPassedKYC(walletAddress);
         console.log('KYC status after verification:', kycStatus);
         
-        // Look for SBT minting event from the transaction logs
-        let sbtMinted = false;
-        let sbtTokenId: number | undefined = undefined;
-        
-        try {
-          // Look for SBTMinted event in transaction logs
-          const sbtMintedEvent = receipt.logs.find((log: any) => {
-            try {
-              // Try to parse the log as an event
-              if (log.fragment && log.fragment.name === 'SBTMinted') {
-                return true;
-              }
-              return false;
-            } catch (error) {
-              return false;
-            }
-          });
-          
-          if (sbtMintedEvent) {
-            sbtMinted = true;
-            // Parse the token ID from the event
-            try {
-              sbtTokenId = Number(sbtMintedEvent.args[1]);
-              console.log('SBT minted with token ID:', sbtTokenId);
-            } catch (error) {
-              console.warn('Error parsing SBT token ID:', error);
-            }
-          }
-        } catch (error) {
-          console.warn('Error parsing SBT minting event:', error);
-        }
-        
         return {
           success: true,
-          txHash: receipt.hash,
-          sbtMinted,
-          sbtTokenId
+          txHash: receipt.hash // Updated from receipt.transactionHash for ethers v6
         };
       },
       // Mock implementation
@@ -295,14 +255,9 @@ export class KYCService {
           console.log(`Added mock KYC verification for: ${address}`);
         }).catch(console.error);
         
-        // Mock SBT minting for testing
-        const mockTokenId = Math.floor(Math.random() * 1000) + 1;
-        
         return {
           success: true,
-          txHash: `mock-tx-${Date.now()}`,
-          sbtMinted: true,
-          sbtTokenId: mockTokenId
+          txHash: `mock-tx-${Date.now()}`
         };
       }
     );

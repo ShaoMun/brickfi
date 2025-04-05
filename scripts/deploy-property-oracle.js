@@ -1,14 +1,7 @@
-import { ethers } from "hardhat";
-import fs from "fs";
+const { ethers } = require("hardhat");
+const fs = require("fs");
 
-interface DeploymentData {
-  network: string;
-  contractName: string;
-  address: string;
-  timestamp: string;
-}
-
-async function main(): Promise<void> {
+async function main() {
   console.log("Deploying PropertyPriceOracle contract to Polygon Amoy testnet...");
 
   // Get the contract factory
@@ -18,15 +11,18 @@ async function main(): Promise<void> {
   const propertyPriceOracle = await PropertyPriceOracle.deploy();
   
   // Wait for deployment to finish
-  await propertyPriceOracle.deployed();
+  await propertyPriceOracle.waitForDeployment();
   
-  console.log("PropertyPriceOracle deployed to:", propertyPriceOracle.address);
+  // Get the contract address
+  const address = await propertyPriceOracle.getAddress();
+  
+  console.log("PropertyPriceOracle deployed to:", address);
   
   // Record deployment in a file for future reference
-  const deploymentData: DeploymentData = {
+  const deploymentData = {
     network: "polygon_amoy",
     contractName: "PropertyPriceOracle",
-    address: propertyPriceOracle.address,
+    address: address,
     timestamp: new Date().toISOString(),
   };
   

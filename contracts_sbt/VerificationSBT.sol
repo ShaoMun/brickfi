@@ -45,12 +45,12 @@ contract VerificationSBT is ERC721, ERC721URIStorage, Ownable {
      * @dev Mint a new verification token for a wallet that has passed KYC
      * @param to Address to mint the token to
      * @param kycHash Hash of the KYC data
-     * @param uri URI for the token metadata
+     * @param tokenURI URI for the token metadata
      */
     function mintVerificationToken(
         address to, 
         bytes32 kycHash,
-        string memory uri
+        string memory tokenURI
     ) external returns (uint256) {
         // Only the KYC verifier contract or the owner can mint tokens
         require(
@@ -67,7 +67,7 @@ contract VerificationSBT is ERC721, ERC721URIStorage, Ownable {
         
         // Mint token
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, uri);
+        _setTokenURI(tokenId, tokenURI);
         
         // Store token to wallet mapping and KYC hash
         _walletToToken[to] = tokenId;
@@ -164,7 +164,7 @@ contract VerificationSBT is ERC721, ERC721URIStorage, Ownable {
      */
     function transferFrom(address from, address to, uint256 tokenId) 
         public 
-        override(ERC721, IERC721) 
+        override 
     {
         revert("SBT: Token cannot be transferred");
     }
@@ -174,7 +174,7 @@ contract VerificationSBT is ERC721, ERC721URIStorage, Ownable {
      */
     function safeTransferFrom(address from, address to, uint256 tokenId) 
         public 
-        override(ERC721, IERC721) 
+        override 
     {
         revert("SBT: Token cannot be transferred");
     }
@@ -184,7 +184,7 @@ contract VerificationSBT is ERC721, ERC721URIStorage, Ownable {
      */
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) 
         public 
-        override(ERC721, IERC721) 
+        override 
     {
         revert("SBT: Token cannot be transferred");
     }

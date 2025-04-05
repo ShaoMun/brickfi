@@ -7,11 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postcompile": "cp artifacts/contracts/KYCVerifier.sol/KYCVerifier.json contracts/abis/",
-    "deploy:sbt": "npx hardhat run scripts/deploy-verification-sbt.js --network hashkeyTestnet",
-    "deploy:sbt:local": "npx hardhat run scripts/deploy-verification-sbt.js --network localhost",
-    "postdeploy:sbt": "cp artifacts/contracts/VerificationSBT.sol/VerificationSBT.json contracts/abis/",
-    "update:sbt-address": "node scripts/update-sbt-address.js"
+    "postcompile": "cp artifacts/contracts/KYCVerifier.sol/KYCVerifier.json contracts/abis/"
   },
   "dependencies": {
     "next": "15.2.4",
@@ -24,7 +20,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@openzeppelin/contracts": "^4.9.3",
+    "@openzeppelin/contracts": "^4.9.6",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -28,11 +28,19 @@ module.exports = {
       chainId: 133,
       accounts: [PRIVATE_KEY],
       gasPrice: 20000000000 // 20 gwei
+    },
+    polygon_amoy: {
+      url: "https://rpc-amoy.polygon.technology/",
+      chainId: 80002,
+      accounts: [PRIVATE_KEY],
+      gasPrice: 35000000000, // 35 gwei
+      maxPriorityFeePerGas: 25000000000 // 25 gwei
     }
   },
   etherscan: {
     apiKey: {
-      hashkeyTestnet: "" // No API key needed
+      hashkeyTestnet: "", // No API key needed
+      polygon_amoy: process.env.POLYGONSCAN_API_KEY || "" // Optional: add your Polygonscan API key if available
     },
     customChains: [
       {
@@ -41,6 +49,14 @@ module.exports = {
         urls: {
           apiURL: "https://hashkeychain-testnet-explorer.alt.technology/api",
           browserURL: "https://hashkeychain-testnet-explorer.alt.technology"
+        }
+      },
+      {
+        network: "polygon_amoy",
+        chainId: 80002,
+        urls: {
+          apiURL: "https://api-testnet.polygonscan.com/api",
+          browserURL: "https://amoy.polygonscan.com/"
         }
       }
     ]

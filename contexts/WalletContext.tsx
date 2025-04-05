@@ -2,7 +2,6 @@ import React, { createContext, useState, useContext, useEffect, ReactNode } from
 import { ethers } from 'ethers';
 import { createAttestationService } from '../utils/attestationService';
 import { createKYCService } from '../utils/kycService';
-import { createSBTService } from '../utils/sbtService';
 
 interface WalletContextType {
   walletConnected: boolean;
@@ -13,7 +12,6 @@ interface WalletContextType {
   errorMessage: string;
   attestationService: any;
   kycService: any;
-  sbtService: any;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   formatAddress: (address: string) => string;
@@ -28,7 +26,6 @@ const WalletContext = createContext<WalletContextType>({
   errorMessage: '',
   attestationService: null,
   kycService: null,
-  sbtService: null,
   connectWallet: async () => {},
   disconnectWallet: () => {},
   formatAddress: () => '',
@@ -48,7 +45,6 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [attestationService, setAttestationService] = useState<any>(null);
   const [kycService, setKycService] = useState<any>(null);
-  const [sbtService, setSbtService] = useState<any>(null);
   
   // Format address for display
   const formatAddress = (address: string) => {
@@ -89,13 +85,6 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
       if (kyc) {
         setKycService(kyc);
         console.log('KYC service initialized');
-      }
-      
-      // Initialize SBT service
-      const sbt = await createSBTService();
-      if (sbt) {
-        setSbtService(sbt);
-        console.log('SBT service initialized');
       }
     } catch (error) {
       console.error('Service initialization error:', error);
@@ -147,7 +136,6 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
     setChainId('');
     setAttestationService(null);
     setKycService(null);
-    setSbtService(null);
     
     // Clear localStorage
     localStorage.removeItem('walletConnected');
@@ -243,7 +231,6 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
     errorMessage,
     attestationService,
     kycService,
-    sbtService,
     connectWallet,
     disconnectWallet,
     formatAddress,
