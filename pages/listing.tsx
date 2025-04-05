@@ -914,5 +914,173 @@ export default function Listing() {
       }
     }
     
+    // ENHANCED DATE OF BIRTH EXTRACTION
+    // Strategy 1: Extract from MRZ line in passports
+    // ... existing MRZ extraction logic ...
     
-} }
+    // Strategy 2: Look for explicit date patterns with DOB labels
+    const explicitDobPatterns = [
+      // Label-based patterns
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{1,4}[\s./-]+\d{1,2}[\s./-]+\d{1,4})/i,
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{1,2}[\s./-]*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s./-]*\d{1,4})/i,
+      // Pattern with date first then label
+      /(\d{1,4}[\s./-]+\d{1,2}[\s./-]+\d{1,4})[\s:.,-]+(\d{1,2}[\s./-]+birth|dob|born|date\s+of\s+birth|birth\s+date)/i,
+      // Japanese format (year, month, day)
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{4}年\d{1,2}月\d{1,2}日)/i,
+      // Chinese format
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{4}年\d{1,2}月\d{1,2}日)/i,
+      // European formats
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{1,2}[\s./-]+\d{1,2}[\s./-]+\d{4})/i,
+      // Simple digit sequences that might be dates
+      /(?:birth|dob|born|date\s+of\s+birth|birth\s+date)[\s:.,-]+(\d{2}[\s./-]+\d{2}[\s./-]+\d{2,4})/i,
+    ];
+    
+    for (const pattern of explicitDobPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const potentialDob = match[1].trim();
+        console.log("Found potential DOB with explicit pattern:", potentialDob);
+        
+        // Clean up the date string for better parsing
+        let cleanDate = potentialDob
+          .replace(/年|月|日/g, '/') // Convert Japanese/Chinese date separators
+          .replace(/[^\d/.\-]/g, '/') // Convert any non-digit, non-separator char to /
+          .replace(/[/.\-]+/g, '/');  // Normalize all separators to /
+        
+        // Try different date parsing approaches
+        let parsedDate: Date | null = null;
+        
+        // Try different date formats
+        const dateFormats = [
+          // YYYY/MM/DD
+          () => {
+            const parts = cleanDate.split('/');
+            if (parts.length === 3 && parts[0].length === 4) {
+              return new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+            }
+            return null;
+          },
+          // DD/MM/YYYY
+          () => {
+            const parts = cleanDate.split('/');
+            if (parts.length === 3 && parts[2].length === 4) {
+              return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+            }
+            return null;
+          },
+          // MM/DD/YYYY
+          () => {
+            const parts = cleanDate.split('/');
+            if (parts.length === 3 && parts[2].length === 4) {
+              return new Date(parseInt(parts[2]), parseInt(parts[0])-1, parseInt(parts[1]));
+            }
+            return null;
+          },
+          // Try standard Date parsing
+          () => {
+            const date = new Date(cleanDate);
+            return isNaN(date.getTime()) ? null : date;
+          }
+        ];
+        
+        // Try each format until one works
+        for (const formatFn of dateFormats) {
+          parsedDate = formatFn();
+          if (parsedDate && !isNaN(parsedDate.getTime())) {
+            const year = parsedDate.getFullYear();
+            
+            // Validate the year is reasonable
+            const currentYear = new Date().getFullYear();
+            if (year > 1900 && year <= currentYear) {
+              extractedData.dateOfBirth = parsedDate.toISOString().split('T')[0];
+              extractedData.birthYear = String(year);
+              
+              // Calculate age
+              let age = currentYear - year;
+              const currentMonth = new Date().getMonth();
+              const birthMonth = parsedDate.getMonth();
+              
+              // Adjust if birthday hasn't occurred yet this year
+              if (currentMonth < birthMonth || 
+                 (currentMonth === birthMonth && new Date().getDate() < parsedDate.getDate())) {
+                age--;
+              }
+              
+              extractedData.age = String(age);
+              console.log("Calculated age from explicit DOB pattern:", age);
+              break;
+            }
+          }
+        }
+        
+        if (extractedData.dateOfBirth) break; // Stop if we found a valid date
+      }
+    }
+    
+    // Strategy 3: Look for year-only mentions
+    if (!extractedData.dateOfBirth) {
+      const yearPatterns = [
+        /(?:birth|born|birth\s+year|year\s+of\s+birth)[\s:.,-]+(?:in\s+)?(\d{4})\b/i,
+        /\b(19\d{2}|20[0-2]\d)[\s:.,-]+(?:birth|born|birth\s+year|year\s+of\s+birth)/i,
+      ];
+      
+      for (const pattern of yearPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const birthYear = match[1].trim();
+          console.log("Found birth year:", birthYear);
+          
+          const year = parseInt(birthYear);
+          const currentYear = new Date().getFullYear();
+          
+          // Validate year is reasonable
+          if (year > 1900 && year <= currentYear) {
+            // Set the birth year
+            extractedData.birthYear = birthYear;
+            
+            // Approximate DOB as January 1st of that year
+            extractedData.dateOfBirth = `${year}-01-01`;
+            
+            // Calculate approximate age
+            const age = currentYear - year;
+            extractedData.age = String(age);
+            console.log("Calculated approximate age from birth year:", age);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Strategy 4: Extract potential birth year from any 4-digit number that looks like a year
+    if (!extractedData.dateOfBirth && !extractedData.birthYear) {
+      const yearMatches = text.match(/\b(19\d{2}|20[0-2]\d)\b/g);
+      if (yearMatches) {
+        // Filter years that are likely to be birth years (not too old, not in future)
+        const currentYear = new Date().getFullYear();
+        const potentialBirthYears = yearMatches
+          .map(y => parseInt(y))
+          .filter(y => y >= 1920 && y <= currentYear - 18) // Assuming minimum age is 18
+          .sort((a, b) => b - a); // Sort newest first
+        
+        if (potentialBirthYears.length > 0) {
+          // Use the most recent year that's reasonable for a birth year
+          const birthYear = potentialBirthYears[potentialBirthYears.length - 1];
+          extractedData.birthYear = String(birthYear);
+          extractedData.dateOfBirth = `${birthYear}-01-01`;
+          
+          // Calculate approximate age
+          const age = currentYear - birthYear;
+          extractedData.age = String(age);
+          console.log("Calculated approximate age from potential birth year:", age);
+        }
+      }
+    }
+    
+    // ... existing nationality detection code ...
+    
+    console.log("Final extracted data:", extractedData);
+    return extractedData;
+  };
+
+  
+} 
