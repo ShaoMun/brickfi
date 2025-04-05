@@ -1082,5 +1082,200 @@ export default function Listing() {
     return extractedData;
   };
 
+  // Connect wallet functionality - real implementation
+  const connectWallet = async () => {
+    // If already connected, disconnect
+    if (walletConnected) {
+      setWalletConnected(false);
+      setWalletAddress("");
+      setWalletError(null);
+      setKycService(null);
+      return;
+    }
+    
+    try {
+      // Ensure we're in a browser environment
+      if (typeof window === 'undefined') return;
+      
+      // Check if ethereum provider exists (e.g., MetaMask)
+      if (!window.ethereum) {
+        setWalletError("No Ethereum wallet found. Please install MetaMask.");
+        return;
+      }
+      
+      // Request accounts access
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      if (accounts.length > 0) {
+        // Get current chain ID
+        const chainId = window.ethereum.chainId;
+        updateNetworkName(chainId);
+        
+        // Save account info
+        setWalletAddress(accounts[0]);
+        setWalletConnected(true);
+        setWalletError(null);
+        console.log("Connected wallet:", accounts[0]);
+        
+        // Check if we're on HashKey Chain Testnet, if not, prompt to switch
+        if (chainId !== "0x85") {
+          console.log("Not on HashKey Chain Testnet, attempting to switch...");
+          await switchToHashKeyChain();
+        }
+      } else {
+        setWalletError("No accounts found. Please create an account in your wallet.");
+      }
+    } catch (error: any) {
+      console.error("Error connecting wallet:", error);
+      // Handle specific MetaMask errors
+      if (error.code === 4001) {
+        // User rejected the request
+        setWalletError("Connection rejected. Please approve the connection request.");
+      } else {
+        setWalletError(`Failed to connect wallet: ${error.message || "Unknown error"}`);
+      }
+    }
+  };
+
+  // Initialize KYC service when wallet is connected
+  useEffect(() => {
+    if (walletConnected && typeof window !== 'undefined') {
+      const initKycService = async () => {
+        try {
+          console.log('Initializing KYC service...');
+          const service = await createKYCService();
+          if (service) {
+            setKycService(service);
+            console.log('KYC service initialized successfully');
+            
+            // Check if user has already passed KYC
+            if (walletAddress) {
+              try {
+                const hasPassedKYC = await service.hasPassedKYC(walletAddress);
+                if (hasPassedKYC) {
+                  console.log('User has already passed KYC verification');
+                  setKycCompleted(true);
+                  setKycVerificationStatus('success');
+                  setKycVerificationMessage('KYC verification already completed!');
+                  
+                  // Get verification timestamp
+                  const timestamp = await service.getVerificationTimestamp(walletAddress);
+                  if (timestamp > 0) {
+                    const date = new Date(timestamp * 1000);
+                    setKycVerificationMessage(`KYC verified on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`);
+                  }
+                }
+              } catch (error) {
+                console.error('Error checking KYC status:', error);
+              }
+            }
+          } else {
+            console.error('Failed to create KYC service');
+          }
+        } catch (error) {
+          console.error('Error initializing KYC service:', error);
+        }
+      };
+      
+      initKycService();
+    }
+  }, [walletConnected, walletAddress]);
+  
+  // Check if user has already passed KYC
+  useEffect(() => {
+    if (kycService && walletAddress) {
+      const checkKycStatus = async () => {
+        try {
+          const hasPassedKYC = await kycService.hasPassedKYC(walletAddress);
+          if (hasPassedKYC) {
+            setKycCompleted(true);
+            setKycVerificationStatus('success');
+            setKycVerificationMessage('KYC verification already completed. You can proceed.');
+            
+            // Get verification timestamp
+            const timestamp = await kycService.getVerificationTimestamp(walletAddress);
+            if (timestamp > 0) {
+              const date = new Date(timestamp * 1000);
+              setKycVerificationMessage(`KYC verified on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking KYC status:', error);
+        }
+      };
+      
+      checkKycStatus();
+    }
+  }, [kycService, walletAddress]);
+
+  // Handle KYC submission - updated to use blockchain
+  const handleKycSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (parseInt(age) < 18) {
+      alert("You must be 18 or older to proceed");
+      return;
+    }
+    
+    if (!fullName) {
+      alert("Please enter your full name");
+      return;
+    }
+    
+    if (!documentFile || !hashedData) {
+      alert("Please upload and scan your identification document");
+      return;
+    }
+    
+    // If no KYC service available, revert to old behavior
+    if (!kycService) {
+      console.warn("KYC service not available, using legacy verification method");
+      console.log("Securely stored hashed KYC data:", hashedData);
+      setKycCompleted(true);
+      setStep("attestation");
+      return;
+    }
+    
+    // Prepare user data for blockchain verification
+    setKycVerificationStatus('pending');
+    setKycVerificationMessage('Submitting KYC data to blockchain...');
+    
+    try {
+      const userData = {
+        fullName,
+        age,
+        dateOfBirth: dateOfBirth || new Date().toISOString().split('T')[0], // Use current date if DOB not available
+        nationality: isCitizen ? 'United States' : 'Other',
+        isUSCitizen: isCitizen,
+        documentNumber: hashedData // Use the hashed data as document number for privacy
+      };
+      
+      // Submit to blockchain
+      const result = await kycService.submitKYCVerification(userData);
+      
+      if (result.success) {
+        setKycVerificationStatus('success');
+        setKycVerificationMessage('KYC verification completed successfully!');
+        setKycTransactionHash(result.txHash || null);
+        setKycCompleted(true);
+        
+        // Proceed to next step after a short delay
+        setTimeout(() => {
+          setStep("attestation");
+        }, 2000);
+      } else {
+        setKycVerificationStatus('failed');
+        setKycVerificationMessage(`KYC verification failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Error during KYC submission:', error);
+      setKycVerificationStatus('failed');
+      setKycVerificationMessage(`Error: ${error.message || 'Unknown error'}`);
+    }
+  };
+
   
 } 
