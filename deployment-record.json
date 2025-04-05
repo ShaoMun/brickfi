@@ -1,8 +1,14 @@
 {
   "PropertyAttestationVerifier": {
-    "address": "0x0D7E2d87275BC57F3914Dd0B2e91075dd59020C8",
+    "address": "0x17b033AA70092f8f8357d0e819D06258FF519057",
     "network": "hashkeyTestnet",
-    "deployedAt": "2025-04-05T00:15:30.036Z",
+    "deployedAt": "2025-04-05T15:34:02.009Z",
+    "deployer": "0x084cd49bD8Cc9E1120434d841cd2577C34C3bDec"
+  },
+  "KYCVerifier": {
+    "address": "0x69CE80a3DABdeaC03b3E4785bb677F99a2b626Bb",
+    "network": "hashkeyTestnet",
+    "deployedAt": "2025-04-05T15:19:44.052Z",
     "deployer": "0x084cd49bD8Cc9E1120434d841cd2577C34C3bDec"
   }
 }
