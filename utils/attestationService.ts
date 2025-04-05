@@ -977,6 +977,59 @@ export class AttestationService {
       return false;
     }
   }
+  
+  // Add these new methods
+  public async getPropertyValuation(location: string, size: string, condition: string): Promise<string> {
+    try {
+      // Simulated oracle call - in a real implementation, this would call a contract
+      // Simple property valuation algorithm based on size, location and condition
+      const sizeNumeric = parseInt(size.replace(/[^\d]/g, '')) || 1000;
+      const conditionValue = parseInt(condition) || 3;
+      const basePrice = 100000; // Base property value
+      
+      // Location-based multiplier
+      let locationMultiplier = 1.0;
+      const highValueLocations = ['New York', 'San Francisco', 'Los Angeles', 'Miami', 'London', 'Tokyo'];
+      const mediumValueLocations = ['Chicago', 'Dallas', 'Seattle', 'Boston', 'Paris', 'Berlin'];
+      
+      if (highValueLocations.some(loc => location.toLowerCase().includes(loc.toLowerCase()))) {
+        locationMultiplier = 1.5;
+      } else if (mediumValueLocations.some(loc => location.toLowerCase().includes(loc.toLowerCase()))) {
+        locationMultiplier = 1.2;
+      }
+      
+      // Calculate property value
+      const calculatedValue = basePrice * (sizeNumeric / 1000) * (conditionValue / 3) * locationMultiplier;
+      return calculatedValue.toFixed(2);
+    } catch (error) {
+      console.error("Error in property valuation:", error);
+      return "100000.00"; // Default fallback value
+    }
+  }
+  
+  public async mintPropertyToken(tokenData: any): Promise<{success: boolean, txHash?: string, error?: string}> {
+    try {
+      // Simulate a blockchain transaction for token minting
+      console.log("Minting property token with data:", tokenData);
+      
+      // Simulate blockchain delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Generate a random transaction hash
+      const txHash = `0x${Math.random().toString(16).substring(2, 16)}${Math.random().toString(16).substring(2, 16)}`;
+      
+      return {
+        success: true,
+        txHash
+      };
+    } catch (error: any) {
+      console.error("Error minting property token:", error);
+      return {
+        success: false,
+        error: error.message || "Unknown error occurred during token minting"
+      };
+    }
+  }
 }
 
 // Create and export a singleton instance

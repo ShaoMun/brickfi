@@ -19,7 +19,7 @@ interface Property {
   verified: boolean;
 }
 
-export default function Dashboard() {
+export default function Marketplace() {
   // State variables
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
@@ -230,7 +230,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-100">
       <Head>
-        <title>Property Assets Dashboard</title>
+        <title>Property Marketplace</title>
         <meta name="description" content="View your attested property assets" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -273,7 +273,7 @@ export default function Dashboard() {
             <div className="bg-white p-6 rounded-lg shadow-md mb-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
                 <div>
-                  <h2 className="text-xl font-bold mb-2">Dashboard</h2>
+                  <h2 className="text-xl font-bold mb-2">Marketplace</h2>
                   <p className="text-gray-600">Connected as: <span className="font-medium">{formatAddress(walletAddress)}</span></p>
                   <p className="text-gray-600">Network: <span className="font-medium">{getNetworkName()}</span></p>
                 </div>

@@ -36,8 +36,8 @@ export default function NavigationBar() {
           Derivative
         </Link>
         
-        <Link href="/dashboard" className="pixel-btn bg-transparent backdrop-blur-sm border-[#FFC107] border-2 py-2 px-3 text-xs text-white hover:bg-[#FFC107]/50 transition-colors">
-          Dashboard
+        <Link href="/marketplace" className="pixel-btn bg-transparent backdrop-blur-sm border-[#FFC107] border-2 py-2 px-3 text-xs text-white hover:bg-[#FFC107]/50 transition-colors">
+          Marketplace
         </Link>
         
         <Link href="/profile" className="pixel-btn bg-transparent backdrop-blur-sm border-[#FF5722] border-2 py-2 px-3 text-xs text-white hover:bg-[#FF5722]/50 transition-colors">
