@@ -144,6 +144,11 @@ export default function Listing() {
   const [assetPhotoUrls, setAssetPhotoUrls] = useState<string[]>([]);
   const [legalDocs, setLegalDocs] = useState<File[]>([]);
   const [docScanStatuses, setDocScanStatuses] = useState<string[]>([]);
+  // New property fields
+  const [propertyLocation, setPropertyLocation] = useState("");
+  const [propertySize, setPropertySize] = useState("");
+  const [propertyCondition, setPropertyCondition] = useState("3"); // Default to 3 stars
+  // Existing extracted properties
   const [extractedProperties, setExtractedProperties] = useState({
     deedNumber: "",
     address: "",
@@ -167,6 +172,9 @@ export default function Listing() {
 
   // Add state variables for error handling
   const [propertyAlreadyAttested, setPropertyAlreadyAttested] = useState(false);
+  
+  // Add a submission tracking state near the other state declarations
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const router = useRouter();
 
@@ -1412,166 +1420,200 @@ export default function Listing() {
     }
   }, [walletConnected]);
 
-  // Update the handleAttestationSubmit function to use the real attestation service
+  // Update the handleAttestationSubmit function
   const handleAttestationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Validate attestation data
-    if (!legalDocs.length || !assetPhotos.length) {
-      alert("Please upload at least one legal document and one asset photo");
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      console.log("Submission already in progress, preventing duplicate");
       return;
     }
     
-    if (!propertyDataExtracted || !propertyDataHash) {
-      alert("Please scan at least one document to extract property data");
-      return;
-    }
-    
-    // Check if wallet is connected
-    if (!walletConnected) {
-      alert("Please connect your wallet to submit attestation");
-      return;
-    }
-    
-    // Check if KYC is completed - with real-time verification
-    if (!kycCompleted && kycService) {
-      try {
-        // Double-check KYC status in real-time
-        const hasPassedKYC = await kycService.hasPassedKYC(walletAddress);
-        if (hasPassedKYC) {
-          // Update state if KYC is actually completed
-          setKycCompleted(true);
-        } else {
-          alert("Please complete KYC verification before submitting attestation");
-          setStep("kyc");
-          return;
-        }
-      } catch (error) {
-        console.error("Error checking KYC status:", error);
-        alert("Please complete KYC verification before submitting attestation");
-        setStep("kyc");
-        return;
-      }
-    } else if (!kycCompleted) {
-      alert("Please complete KYC verification before submitting attestation");
-      setStep("kyc");
-      return;
-    }
-    
-    // Check if we're on HashKey Chain testnet
-    if (networkName !== "HashKey Chain Testnet") {
-      alert("Please switch to HashKey Chain Testnet to submit attestation");
-      // Try to switch the network automatically
-      if (typeof switchToHashKeyChain === 'function') {
-        try {
-          await switchToHashKeyChain();
-        } catch (error) {
-          console.error("Failed to switch network automatically:", error);
-          return;
-        }
-      } else {
-        return;
-      }
-    }
-    
-    // Check if attestation service is initialized
-    if (!attestationService) {
-      try {
-        // Try to initialize the attestation service
-        const service = await createAttestationService();
-        if (!service) {
-          alert("Failed to initialize attestation service. Please check your wallet connection.");
-          return;
-        }
-        setAttestationService(service);
-      } catch (error) {
-        console.error("Error initializing attestation service:", error);
-        alert("Failed to initialize attestation service. Please check your wallet connection.");
-        return;
-      }
-    }
-    
-    // Set attestation status to pending
-    setAttestationStatus('pending');
+    // Set submission flag to prevent duplicates
+    setIsSubmitting(true);
     
     try {
-      // Prepare photo hashes - in a real app, you'd upload to IPFS and get hashes
-      const photoHashes = assetPhotoUrls.map((url, index) => {
-        // Create a hash from the image URL
-        const hash = hashData(`photo_${index}_${url}`);
-        return hash.substring(0, 20); // Use first 20 chars of hash
-      });
+      // Validate attestation data
+      if (!legalDocs.length || !assetPhotos.length) {
+        alert("Please upload at least one legal document and one asset photo");
+        setIsSubmitting(false); // Reset submission flag
+        return;
+      }
       
-      // Create structured property data from the extracted information
-      const propertyData = {
-        propertyName: extractedProperties.deedNumber?.split('-')[0] || `Property_${Math.floor(Math.random() * 1000)}`,
-        propertyDescription: "Property attested through blockchain verification",
-        propertyAddress: extractedProperties.address || propertyAddress,
-        deedNumber: extractedProperties.deedNumber || deedNumber,
-        ownerName: extractedProperties.ownerName || fullName,
-        taxId: extractedProperties.taxId || taxId,
-        fractionizeAmount: "1000", // Default fractionization amount
-        photoHashes
-      };
+      if (!propertyDataExtracted || !propertyDataHash) {
+        alert("Please scan at least one document to extract property data");
+        setIsSubmitting(false); // Reset submission flag
+        return;
+      }
       
-      // Update state with the data that will be submitted
-      setPropertyName(propertyData.propertyName);
-      setPropertyDescription(propertyData.propertyDescription);
-      setPropertyAddress(propertyData.propertyAddress);
-      setDeedNumber(propertyData.deedNumber);
-      setFractionizeAmount(propertyData.fractionizeAmount);
+      // Check if wallet is connected
+      if (!walletConnected) {
+        alert("Please connect your wallet to submit attestation");
+        setIsSubmitting(false); // Reset submission flag
+        return;
+      }
       
-      console.log("Submitting attestation with data:", propertyData);
+      // Check if KYC is completed - with real-time verification
+      if (!kycCompleted && kycService) {
+        try {
+          // Double-check KYC status in real-time
+          const hasPassedKYC = await kycService.hasPassedKYC(walletAddress);
+          if (hasPassedKYC) {
+            // Update state if KYC is actually completed
+            setKycCompleted(true);
+          } else {
+            alert("Please complete KYC verification before submitting attestation");
+            setStep("kyc");
+            setIsSubmitting(false); // Reset submission flag
+            return;
+          }
+        } catch (error) {
+          console.error("Error checking KYC status:", error);
+          alert("Please complete KYC verification before submitting attestation");
+          setStep("kyc");
+          setIsSubmitting(false); // Reset submission flag
+          return;
+        }
+      } else if (!kycCompleted) {
+        alert("Please complete KYC verification before submitting attestation");
+        setStep("kyc");
+        setIsSubmitting(false); // Reset submission flag
+        return;
+      }
       
-      // Ensure attestation service is available
+      // Check if we're on HashKey Chain testnet
+      if (networkName !== "HashKey Chain Testnet") {
+        alert("Please switch to HashKey Chain Testnet to submit attestation");
+        // Try to switch the network automatically
+        if (typeof switchToHashKeyChain === 'function') {
+          try {
+            await switchToHashKeyChain();
+          } catch (error) {
+            console.error("Failed to switch network automatically:", error);
+            setIsSubmitting(false); // Reset submission flag
+            return;
+          }
+        } else {
+          setIsSubmitting(false); // Reset submission flag
+          return;
+        }
+      }
+      
+      // Check if attestation service is initialized
       if (!attestationService) {
-        throw new Error("Attestation service not initialized");
+        try {
+          // Try to initialize the attestation service
+          const service = await createAttestationService();
+          if (!service) {
+            alert("Failed to initialize attestation service. Please check your wallet connection.");
+            setIsSubmitting(false); // Reset submission flag
+            return;
+          }
+          setAttestationService(service);
+        } catch (error) {
+          console.error("Error initializing attestation service:", error);
+          alert("Failed to initialize attestation service. Please check your wallet connection.");
+          setIsSubmitting(false); // Reset submission flag
+          return;
+        }
       }
       
-      // Submit attestation to blockchain - THIS IS THE REAL TRANSACTION
-      const result = await attestationService.attestProperty(propertyData, photoHashes);
+      // Set attestation status to pending
+      setAttestationStatus('pending');
       
-      if (result.success) {
-        // Update status to success
-        setAttestationStatus('success');
-        setAttestationTxHash(result.txHash || null);
-        setAttestationComplete(true);
+      try {
+        // Prepare photo hashes - in a real app, you'd upload to IPFS and get hashes
+        const photoHashes = assetPhotoUrls.map((url, index) => {
+          // Create a hash from the image URL
+          const hash = hashData(`photo_${index}_${url}_${Date.now()}`);
+          return hash.substring(0, 20); // Use first 20 chars of hash
+        });
         
-        // Show success message
-        alert("Property attestation successful! Your asset is now verified on the blockchain and ready for listing.");
-      } else {
-        // Handle failure
-        setAttestationStatus('failed');
-        alert(`Failed to attest property: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error: any) {
-      console.error("Attestation error:", error);
-      
-      // Handle the "Property already attested" error specifically
-      const errorMsg = error.message || (error.reason ? error.reason : '') || (error.data || '');
-      const isAlreadyAttestedError = 
-        errorMsg.includes("Property already attested") || 
-        (error.data && typeof error.data === 'string' && error.data.includes("Property already attested")) ||
-        (error.error && error.error.message && error.error.message.includes("Property already attested"));
-      
-      if (isAlreadyAttestedError) {
-        setPropertyAlreadyAttested(true);
-        setAttestationStatus('failed');
-        setAttestationMessage("This property has already been attested on the blockchain. You can view it in your dashboard.");
+        // Generate a truly unique timestamp-based identifier
+        const uniqueTimestamp = Date.now();
+        const uniqueRandomId = Math.floor(Math.random() * 1000000);
         
-        // Show a more user-friendly message
-        alert("This property has already been attested on the blockchain. It appears in your dashboard.");
-      } else {
-        // Handle other errors
-        setAttestationStatus('failed');
-        setAttestationMessage(`Error: ${errorMsg || 'Unknown error during attestation'}`);
-        alert(`Failed to attest property: ${errorMsg || 'Unknown error'}`);
+        // Create structured property data from the extracted information with guaranteed uniqueness
+        const propertyData = {
+          propertyName: `${extractedProperties.deedNumber?.split('-')[0] || `Property_${Math.floor(Math.random() * 1000)}`}_${uniqueRandomId}`,
+          propertyDescription: `Property attested through blockchain verification at ${new Date(uniqueTimestamp).toISOString()}`,
+          propertyAddress: extractedProperties.address || propertyAddress,
+          deedNumber: extractedProperties.deedNumber || `DEED-${uniqueTimestamp.toString().substring(8)}-${uniqueRandomId}`,
+          ownerName: extractedProperties.ownerName || fullName,
+          taxId: extractedProperties.taxId || taxId,
+          fractionizeAmount: "1000", // Default fractionization amount
+          photoHashes,
+          // Add new property details
+          propertyLocation: propertyLocation,
+          propertySize: propertySize,
+          propertyCondition: propertyCondition,
+          // Add a unique identifier to prevent duplicate attestations
+          uniqueId: `${uniqueTimestamp}-${uniqueRandomId}`
+        };
+        
+        console.log("Submitting attestation with unique data:", propertyData);
+        
+        // Update state with the data that will be submitted
+        setPropertyName(propertyData.propertyName);
+        setPropertyDescription(propertyData.propertyDescription);
+        setPropertyAddress(propertyData.propertyAddress);
+        setDeedNumber(propertyData.deedNumber);
+        setFractionizeAmount(propertyData.fractionizeAmount);
+        
+        // Ensure attestation service is available
+        if (!attestationService) {
+          throw new Error("Attestation service not initialized");
+        }
+        
+        // Submit attestation to blockchain - THIS IS THE REAL TRANSACTION
+        const result = await attestationService.attestProperty(propertyData, photoHashes);
+        
+        if (result.success) {
+          // Update status to success
+          setAttestationStatus('success');
+          setAttestationTxHash(result.txHash || null);
+          setAttestationComplete(true);
+          
+          // Show success message
+          alert("Property attestation successful! Your asset is now verified on the blockchain and ready for listing.");
+        } else {
+          // Handle failure
+          setAttestationStatus('failed');
+          alert(`Failed to attest property: ${result.error || 'Unknown error'}`);
+        }
+      } catch (error: any) {
+        console.error("Attestation error:", error);
+        
+        // Handle the "Property already attested" error specifically
+        const errorMsg = error.message || (error.reason ? error.reason : '') || (error.data || '');
+        const isAlreadyAttestedError = 
+          errorMsg.includes("Property already attested") || 
+          (error.data && typeof error.data === 'string' && error.data.includes("Property already attested")) ||
+          (error.error && error.error.message && error.error.message.includes("Property already attested"));
+        
+        if (isAlreadyAttestedError) {
+          setPropertyAlreadyAttested(true);
+          setAttestationStatus('failed');
+          setAttestationMessage("This property has already been attested on the blockchain. You can view it in your dashboard.");
+          
+          // Show a more user-friendly message
+          alert("This property has already been attested on the blockchain. It appears in your dashboard.");
+        } else {
+          // Handle other errors
+          setAttestationStatus('failed');
+          setAttestationMessage(`Error: ${errorMsg || 'Unknown error during attestation'}`);
+          alert(`Failed to attest property: ${errorMsg || 'Unknown error'}`);
+        }
+      } finally {
+        // Ensure UI doesn't stay in loading state
+        if (attestationStatus === 'pending') {
+          setAttestationStatus('failed');
+        }
       }
     } finally {
-      // Ensure UI doesn't stay in loading state
-      if (attestationStatus === 'pending') {
-        setAttestationStatus('failed');
-      }
+      // Always reset the submission flag when done
+      setIsSubmitting(false);
     }
   };
 
@@ -2654,72 +2696,53 @@ export default function Listing() {
                     <div className="border-t border-white/10 pt-6 mt-6 mb-6">
                       <h4 className="text-white text-xs mb-2">Property Information</h4>
                       <p className="text-white/70 text-xs mb-4">
-                        If document scanning didn't extract accurate information, you can manually enter property details below.
+                        Enter details about your property to create tokens later.
                       </p>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-white text-xs mb-1">Property Address</label>
+                          <label className="block text-white text-xs mb-1">Property Location</label>
                           <input
                             type="text"
-                            value={propertyAddress}
-                            onChange={(e) => setPropertyAddress(e.target.value)}
+                            value={propertyLocation}
+                            onChange={(e) => setPropertyLocation(e.target.value)}
                             className="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white text-xs"
-                            placeholder="Enter property address"
+                            placeholder="City, State, Country"
                           />
                         </div>
                         
                         <div>
-                          <label className="block text-white text-xs mb-1">Deed Number</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={deedNumber}
-                              onChange={(e) => setDeedNumber(e.target.value)}
-                              className="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white text-xs"
-                              placeholder="Enter deed number"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // Make deed number unique by adding a timestamp
-                                const uniqueDeedNumber = `${deedNumber || 'DEED'}-${Date.now().toString().substring(8)}`;
-                                setDeedNumber(uniqueDeedNumber);
-                              }}
-                              className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2 rounded"
-                              title="Make deed number unique to prevent 'already attested' errors"
-                            >
-                              Make Unique
-                            </button>
+                          <label className="block text-white text-xs mb-1">Property Size</label>
+                          <input
+                            type="text"
+                            value={propertySize}
+                            onChange={(e) => setPropertySize(e.target.value)}
+                            className="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white text-xs"
+                            placeholder="e.g. 1500 sq ft / 150 sq m"
+                          />
+                        </div>
+                        
+                        <div className="md:col-span-2">
+                          <label className="block text-white text-xs mb-1">Property Condition (1-5 stars)</label>
+                          <div className="flex items-center bg-black/30 border border-white/20 rounded px-3 py-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setPropertyCondition(star.toString())}
+                                className={`text-2xl mx-1 focus:outline-none transition-colors ${
+                                  parseInt(propertyCondition) >= star ? 'text-yellow-400' : 'text-gray-500 hover:text-gray-300'
+                                }`}
+                                aria-label={`Rate ${star} stars`}
+                              >
+                                ★
+                              </button>
+                            ))}
+                            <span className="text-white text-xs ml-4">
+                              Rating: {propertyCondition} star{parseInt(propertyCondition) !== 1 ? 's' : ''}
+                            </span>
                           </div>
-                          <p className="text-xs text-white/50 mt-1">If getting "already attested" errors, click "Make Unique"</p>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-white text-xs mb-1">Owner Name</label>
-                          <input
-                            type="text"
-                            value={extractedProperties.ownerName || fullName}
-                            onChange={(e) => {
-                              setExtractedProperties({
-                                ...extractedProperties,
-                                ownerName: e.target.value
-                              });
-                            }}
-                            className="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white text-xs"
-                            placeholder="Enter owner name"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-white text-xs mb-1">Tax ID</label>
-                          <input
-                            type="text"
-                            value={taxId}
-                            onChange={(e) => setTaxId(e.target.value)}
-                            className="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white text-xs"
-                            placeholder="Enter tax ID"
-                          />
+                          <p className="text-xs text-white/50 mt-1">Click on a star to rate the property's condition</p>
                         </div>
                       </div>
                     </div>
@@ -2817,16 +2840,28 @@ export default function Listing() {
                                 <p className="text-white text-xs">{propertyAddress}</p>
                               </div>
                               <div className="bg-black/30 p-2 rounded">
-                                <p className="text-white/60 text-xs">Deed Number:</p>
-                                <p className="text-white text-xs">{deedNumber}</p>
+                                <p className="text-white/60 text-xs">Location:</p>
+                                <p className="text-white text-xs">{propertyLocation || "Not specified"}</p>
                               </div>
                               <div className="bg-black/30 p-2 rounded">
-                                <p className="text-white/60 text-xs">Owner:</p>
-                                <p className="text-white text-xs">{extractedProperties.ownerName || fullName}</p>
+                                <p className="text-white/60 text-xs">Size:</p>
+                                <p className="text-white text-xs">{propertySize || "Not specified"}</p>
                               </div>
                               <div className="bg-black/30 p-2 rounded">
-                                <p className="text-white/60 text-xs">Tax ID:</p>
-                                <p className="text-white text-xs">{extractedProperties.taxId || taxId || "Not available"}</p>
+                                <p className="text-white/60 text-xs">Condition:</p>
+                                <p className="text-white text-xs">
+                                  <span className="flex">
+                                    {[...Array(parseInt(propertyCondition) || 0)].map((_, i) => (
+                                      <span key={i} className="text-yellow-400">★</span>
+                                    ))}
+                                    {[...Array(5 - (parseInt(propertyCondition) || 0))].map((_, i) => (
+                                      <span key={i} className="text-gray-400">★</span>
+                                    ))}
+                                    <span className="ml-1 text-white">
+                                      ({propertyCondition || 0} star{parseInt(propertyCondition) !== 1 ? 's' : ''})
+                                    </span>
+                                  </span>
+                                </p>
                               </div>
                             </div>
                             
