@@ -1,0 +1,64 @@
+<svg width="200" height="180" viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .pixel { shape-rendering: crispEdges; }
+  </style>
+  <!-- Sky/Background -->
+  <rect class="pixel" x="0" y="0" width="200" height="180" fill="#87CEEB"/>
+  
+  <!-- Ground/Path -->
+  <rect class="pixel" x="0" y="150" width="200" height="30" fill="#8D6E63"/>
+  <rect class="pixel" x="40" y="150" width="20" height="5" fill="#A1887F"/>
+  <rect class="pixel" x="70" y="150" width="25" height="5" fill="#A1887F"/>
+  <rect class="pixel" x="105" y="150" width="20" height="5" fill="#A1887F"/>
+  <rect class="pixel" x="135" y="150" width="25" height="5" fill="#A1887F"/>
+  
+  <!-- House Base -->
+  <rect class="pixel" x="50" y="80" width="100" height="70" fill="#F5F5DC"/>
+  
+  <!-- Roof -->
+  <rect class="pixel" x="40" y="65" width="120" height="15" fill="#B71C1C"/>
+  <rect class="pixel" x="35" y="60" width="130" height="5" fill="#B71C1C"/>
+  
+  <!-- Dormer Windows -->
+  <rect class="pixel" x="55" y="45" width="30" height="15" fill="#B71C1C"/>
+  <rect class="pixel" x="115" y="45" width="30" height="15" fill="#B71C1C"/>
+  <rect class="pixel" x="85" y="40" width="30" height="20" fill="#B71C1C"/>
+  
+  <!-- Window Frames -->
+  <rect class="pixel" x="60" y="50" width="20" height="5" fill="#8D6E63"/>
+  <rect class="pixel" x="120" y="50" width="20" height="5" fill="#8D6E63"/>
+  <rect class="pixel" x="90" y="45" width="20" height="10" fill="#8D6E63"/>
+  
+  <!-- Windows -->
+  <rect class="pixel" x="65" y="90" width="25" height="25" fill="#8D6E63"/>
+  <rect class="pixel" x="110" y="90" width="25" height="25" fill="#8D6E63"/>
+  <rect class="pixel" x="68" y="93" width="19" height="19" fill="#ADD8E6"/>
+  <rect class="pixel" x="113" y="93" width="19" height="19" fill="#ADD8E6"/>
+  
+  <!-- Door -->
+  <rect class="pixel" x="85" y="115" width="30" height="35" fill="#5D4037"/>
+  <rect class="pixel" x="95" y="125" width="10" height="25" fill="#4E342E"/>
+  <rect class="pixel" x="105" y="130" width="5" height="3" fill="#FFC107"/>
+  
+  <!-- Plants/Vines -->
+  <rect class="pixel" x="45" y="85" width="10" height="10" fill="#4CAF50"/>
+  <rect class="pixel" x="40" y="95" width="15" height="10" fill="#4CAF50"/>
+  <rect class="pixel" x="145" y="85" width="10" height="10" fill="#4CAF50"/>
+  <rect class="pixel" x="145" y="95" width="15" height="10" fill="#4CAF50"/>
+  <rect class="pixel" x="60" y="65" width="5" height="5" fill="#81C784"/>
+  <rect class="pixel" x="75" y="65" width="5" height="5" fill="#81C784"/>
+  <rect class="pixel" x="120" y="65" width="5" height="5" fill="#81C784"/>
+  <rect class="pixel" x="135" y="65" width="5" height="5" fill="#81C784"/>
+  <rect class="pixel" x="90" y="35" width="5" height="5" fill="#81C784"/>
+  <rect class="pixel" x="105" y="35" width="5" height="5" fill="#81C784"/>
+  
+  <!-- Flower pots -->
+  <rect class="pixel" x="50" y="145" width="10" height="5" fill="#8D6E63"/>
+  <rect class="pixel" x="52" y="140" width="6" height="5" fill="#4CAF50"/>
+  <rect class="pixel" x="140" y="145" width="10" height="5" fill="#8D6E63"/>
+  <rect class="pixel" x="142" y="140" width="6" height="5" fill="#4CAF50"/>
+  
+  <!-- Chimney -->
+  <rect class="pixel" x="50" y="30" width="10" height="30" fill="#B71C1C"/>
+  <rect class="pixel" x="140" y="30" width="10" height="30" fill="#B71C1C"/>
+</svg> 

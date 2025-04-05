@@ -1,0 +1,18 @@
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .pixel { shape-rendering: crispEdges; }
+  </style>
+  <!-- Coin base -->
+  <rect class="pixel" x="25" y="15" width="30" height="50" fill="#FFD54F"/>
+  <rect class="pixel" x="15" y="25" width="10" height="30" fill="#FFD54F"/>
+  <rect class="pixel" x="55" y="25" width="10" height="30" fill="#FFD54F"/>
+  
+  <!-- Coin shade -->
+  <rect class="pixel" x="25" y="15" width="30" height="10" fill="#FFC107"/>
+  <rect class="pixel" x="25" y="55" width="30" height="10" fill="#FFC107"/>
+  
+  <!-- Token symbol -->
+  <rect class="pixel" x="35" y="30" width="10" height="5" fill="#7E57C2"/>
+  <rect class="pixel" x="35" y="35" width="5" height="15" fill="#7E57C2"/>
+  <rect class="pixel" x="35" y="45" width="10" height="5" fill="#7E57C2"/>
+</svg> 
