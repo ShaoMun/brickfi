@@ -395,5 +395,198 @@ export default function Listing() {
     reader.readAsDataURL(file);
   };
   
-  
+  // Enhanced document scanning with NLP techniques for DOB extraction
+  const scanDocument = async () => {
+    if (!documentFile || !documentPreview) {
+      alert("Please upload a document first");
+      return;
+    }
+    
+    setIsScanning(true);
+    setScanProgress(0);
+    setFieldsLocked(false); // Reset fields lock state
+    
+    try {
+      // Check if Tesseract is loaded
+      if (typeof window.Tesseract === 'undefined') {
+        alert("OCR library is still loading. Please try again in a few seconds.");
+        setIsScanning(false);
+        return;
+      }
+      
+      // Reset all form fields to ensure no leftover data
+      setFullName("");
+      setAge("");
+      setDateOfBirth("");
+      setIsCitizen(false);
+      
+      // Preprocess the image for better OCR results
+      const processedImage = await preprocessImage(documentPreview);
+      
+      // Advanced Tesseract.js options for better accuracy
+      const tessOptions = {
+        lang: 'eng',
+        engine: 'tesseract',
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+        logger: (progress: any) => {
+          if (progress.status === 'recognizing text') {
+            setScanProgress(parseInt((progress.progress * 100).toFixed(0)));
+          }
+        },
+        // Add optimal OCR parameters
+        tessjs_create_pdf: '0',
+        tessjs_image_rectangle_left: '0',
+        tessjs_image_rectangle_top: '0',
+        tessjs_image_rectangle_width: '1000',
+        tessjs_image_rectangle_height: '1000',
+        // Improve accuracy with these settings
+        preserve_interword_spaces: '1',
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz<>.:;,/\\|()[]{}\'"`~!@#$%^&*-_+=',
+        tessjs_create_hocr: '1', // Generate HOCR for better structure recognition
+        tessjs_create_tsv: '1',   // Generate TSV for better data extraction
+      };
+      
+      // First attempt - with regular settings
+      setScanProgress(10);
+      console.log("Starting OCR with standard settings...");
+      let result = await window.Tesseract.recognize(
+        processedImage,
+        'eng',
+        {
+          logger: (progress: any) => {
+            if (progress.status === 'recognizing text') {
+              setScanProgress(10 + parseInt((progress.progress * 40).toFixed(0)));
+            }
+          }
+        }
+      );
+      
+      let extractedText = result.data.text;
+      console.log("First pass OCR result:", extractedText);
+      
+      // Second attempt - with OSD (orientation and script detection)
+      setScanProgress(50);
+      console.log("Starting OCR with OSD...");
+      const resultOsd = await window.Tesseract.recognize(
+        processedImage,
+        'eng',
+        {
+          ...tessOptions,
+          logger: (progress: any) => {
+            if (progress.status === 'recognizing text') {
+              setScanProgress(50 + parseInt((progress.progress * 40).toFixed(0)));
+            }
+          },
+          tessedit_ocr_engine_mode: '2', // Use OSD mode
+        }
+      );
+      
+      // Combine results if the second pass gave better results
+      if (resultOsd.data.text.length > extractedText.length) {
+        console.log("OSD pass produced better results");
+        extractedText = resultOsd.data.text;
+      }
+      
+      // Store the extracted raw text
+      setExtractedText(extractedText);
+      setScanProgress(95);
+      
+      // Extract structured data from the text
+      console.log("Extracting document data...");
+      const extractedData = extractDocumentData(extractedText);
+      
+      // Update form fields with extracted data if available - NO HARDCODED VALUES
+      if (extractedData.fullName) {
+        setFullName(extractedData.fullName);
+        console.log("Setting full name:", extractedData.fullName);
+      }
+      
+      // PRIORITIZE DOB AND AGE CALCULATION
+      let ageWasSet = false;
+      
+      // First priority: Use date of birth if available for precise age calculation
+      if (extractedData.dateOfBirth) {
+        setDateOfBirth(extractedData.dateOfBirth);
+        console.log("Setting DOB:", extractedData.dateOfBirth);
+        
+        try {
+          // Calculate age from DOB
+          const dob = new Date(extractedData.dateOfBirth);
+          const today = new Date();
+          let calculatedAge = today.getFullYear() - dob.getFullYear();
+          
+          // Adjust age if birthday hasn't occurred yet this year
+          if (today.getMonth() < dob.getMonth() || 
+              (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())) {
+            calculatedAge--;
+          }
+          
+          if (calculatedAge > 0 && calculatedAge < 120) {
+            console.log("Setting age from calculated DOB:", calculatedAge);
+            setAge(String(calculatedAge));
+            ageWasSet = true;
+          }
+        } catch (e) {
+          console.error("Error calculating age from DOB:", e);
+        }
+      }
+      
+      // Second priority: Use extracted age if DOB calculation failed
+      if (!ageWasSet && extractedData.age) {
+        // Validate age is reasonable before setting
+        const ageNum = parseInt(extractedData.age);
+        if (!isNaN(ageNum) && ageNum > 0 && ageNum < 120) {
+          console.log("Setting age from extracted data:", extractedData.age);
+          setAge(extractedData.age);
+          ageWasSet = true;
+        }
+      }
+      
+      // Last resort: If still no age but we have birth year, calculate approximate age
+      if (!ageWasSet && extractedData.birthYear) {
+        const currentYear = new Date().getFullYear();
+        const approximateAge = currentYear - parseInt(extractedData.birthYear);
+        
+        if (approximateAge > 0 && approximateAge < 120) {
+          console.log("Setting age from birth year only:", approximateAge);
+          setAge(String(approximateAge));
+          ageWasSet = true;
+        }
+      }
+      
+      // Set US citizen status based on nationality - NO HARDCODING
+      if (extractedData.nationality) {
+        const isUSCitizen = extractedData.nationality === 'United States' || 
+                          extractedData.nationality === 'USA' ||
+                          extractedData.nationality === 'US';
+        
+        setIsCitizen(isUSCitizen);
+        console.log("Setting citizenship status based on nationality:", isUSCitizen);
+      } else {
+        // Default to false if no nationality detected
+        setIsCitizen(false);
+      }
+      
+      // Lock fields after scanning to make them uneditable
+      setFieldsLocked(true);
+      
+      // Hash the extracted data for secure storage
+      const dataToHash = JSON.stringify({
+        ...extractedData,
+        scanTimestamp: new Date().toISOString()
+      });
+      
+      const hashedResult = hashData(dataToHash);
+      setHashedData(hashedResult);
+      
+      setIsScanning(false);
+      setScanComplete(true);
+      setScanProgress(100);
+    } catch (error) {
+      console.error("Error during document scanning:", error);
+      alert("An error occurred during document scanning. Please try again.");
+      setIsScanning(false);
+    }
+  };
+
 } 
