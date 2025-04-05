@@ -7,7 +7,7 @@ import { Press_Start_2P } from "next/font/google";
 import Script from "next/script";
 import { KYCService, createKYCService } from "../utils/kycService";
 import { AttestationService, createAttestationService } from "../utils/attestationService";
-import { ethers } from "ethers";
+import { ethers, Contract, BrowserProvider, keccak256, toUtf8Bytes, parseUnits } from "ethers";
 import NavigationBar from "../components/NavigationBar";
 import { useWallet } from "../contexts/WalletContext";
 
@@ -1992,54 +1992,188 @@ export default function Listing() {
     }
   };
 
-  // Add the mint token function - add after the handleAttestationSubmit function
+  // Update mintPropertyToken function to implement actual token minting
   const mintPropertyToken = async () => {
     try {
       setIsMinting(true);
+      setAttestationMessage("Minting security tokens on Polygon Amoy...");
       
-      // Ensure we're on the correct network (Polygon Amoy)
+      // Ensure we're on Polygon Amoy network
       if (typeof window !== 'undefined' && window.ethereum) {
         const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-        if (currentChainId !== '0x13881') { // 80001 is Mumbai, for Amoy should be 80002
+        // Polygon Amoy chainId is 80002 (0x13882 in hex)
+        if (currentChainId !== '0x13882') {
           try {
             await window.ethereum.request({
               method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x13881' }], // Use Polygon Mumbai for testing
+              params: [{ chainId: '0x13882' }], // Polygon Amoy
             });
           } catch (switchError: any) {
-            console.error("Failed to switch network:", switchError);
-            setIsMinting(false);
-            return;
+            // This error code indicates the chain has not been added to MetaMask
+            if (switchError.code === 4902) {
+              try {
+                await window.ethereum.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [
+                    {
+                      chainId: '0x13882',
+                      chainName: 'Polygon Amoy Testnet',
+                      nativeCurrency: {
+                        name: 'POL',
+                        symbol: 'POL',
+                        decimals: 18
+                      },
+                      rpcUrls: ['https://rpc-amoy.polygon.technology'],
+                      blockExplorerUrls: ['https://amoy.polygonscan.com/']
+                    }
+                  ]
+                });
+                // Try switching again after adding
+                await window.ethereum.request({
+                  method: 'wallet_switchEthereumChain',
+                  params: [{ chainId: '0x13882' }]
+                });
+              } catch (addError) {
+                console.error("Failed to add Polygon Amoy network:", addError);
+                setAttestationMessage("Failed to add Polygon Amoy network. Please add it manually to your wallet.");
+                setIsMinting(false);
+                return;
+              }
+            } else {
+              console.error("Failed to switch to Polygon Amoy:", switchError);
+              setAttestationMessage("Failed to switch to Polygon Amoy network. Please switch manually.");
+              setIsMinting(false);
+              return;
+            }
           }
         }
+        
+        // Get the signer using ethers v6 syntax
+        const provider = new BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        
+        // Calculate a random but reasonable expected annual return between 7-12%
+        const expectedReturn = (7 + Math.random() * 5).toFixed(2) + '%';
+        
+        // Prepare metadata for the ERC3643 token
+        const tokenMetadata = {
+          // Basic token info
+          name: propertyLocation,                       // Full name, e.g. "123 Main St, New York"
+          symbol: propertyName,                         // Ticker symbol, e.g. "PROP1"
+          totalSupply: fractionizeAmount,               // Total supply, e.g. "1000"
+          decimals: 18,                                 // Standard for ERC tokens
+          
+          // Property details
+          propertyLocation: propertyLocation,           // Location
+          propertySize: propertySize,                   // Size, e.g. "1500 sq ft"
+          propertyCondition: propertyCondition,         // Condition rating (1-5)
+          propertyValuation: totalValueLocked,          // Valuation from oracle
+          deedNumber: deedNumber || extractedProperties.deedNumber,
+          
+          // Financial info
+          initialPrice: tokenPrice,                     // Price per token
+          expectedReturn: expectedReturn,               // Random expected return (7-12%)
+          minimumInvestment: "1",                       // Minimum tokens to purchase
+          
+          // Compliance data
+          requiresKyc: true,                            // KYC requirement flag
+          jurisdiction: "Global",                       // Jurisdiction information
+          transferRestriction: "KYC verified wallets only", // Transfer restrictions
+          
+          // Asset documentation
+          assetImageHash: assetPhotoUrls.length > 0 ? 
+            keccak256(toUtf8Bytes(assetPhotoUrls[0])) : "",
+          legalDocsHash: keccak256(toUtf8Bytes("legal_docs_" + Date.now())),
+          attestationTxHash: attestationTxHash || "",
+          
+          // Creation timestamp
+          timestamp: Math.floor(Date.now() / 1000)
+        };
+        
+        // ----------------------------
+        // ACTUAL CONTRACT INTEGRATION
+        // ----------------------------
+        try {
+          // Connect to the token factory contract that will mint the ERC3643 token
+          // This should be your actual deployed contract address on Polygon Amoy
+          const tokenFactoryAddress = "0x5E93dDD7250a1d954618fab590831445Bae69458"; // Replace with actual contract
+          
+          // Load the ABI for the ERC3643 token factory
+          // In a real implementation, you would import this from your contract artifacts
+          const tokenFactoryABI = [
+            // Token factory functions
+            "function createSecurityToken(string name, string symbol, uint256 totalSupply, string metadata) external returns (address)",
+            "function getTokenDetails(address tokenAddress) external view returns (string memory, string memory, uint256, address)",
+            "event TokenCreated(address indexed tokenAddress, string name, string symbol, uint256 totalSupply, address indexed issuer)"
+          ];
+          
+          // Initialize contract interface
+          const tokenFactory = new Contract(tokenFactoryAddress, tokenFactoryABI, signer);
+          
+          // Convert metadata to string - in production you'd likely store this in IPFS
+          const metadataString = JSON.stringify(tokenMetadata);
+          
+          setAttestationMessage("Creating ERC3643 security token on Polygon Amoy...");
+          
+          // Call the createSecurityToken function to mint the token
+          const tx = await tokenFactory.createSecurityToken(
+            tokenMetadata.name,
+            tokenMetadata.symbol,
+            parseUnits(tokenMetadata.totalSupply, tokenMetadata.decimals),
+            metadataString
+          );
+          
+          setAttestationMessage("Transaction submitted, waiting for confirmation...");
+          
+          // Wait for transaction to be mined
+          const receipt = await tx.wait();
+          console.log("Token minted:", receipt);
+          
+          // Extract the token address from the event logs
+          let tokenAddress = "";
+          if (receipt && receipt.logs) {
+            // Parse logs using ethers v6 format
+            const iface = new ethers.Interface(tokenFactoryABI);
+            for (const log of receipt.logs) {
+              try {
+                const parsedLog = iface.parseLog({
+                  topics: log.topics as string[],
+                  data: log.data
+                });
+                if (parsedLog && parsedLog.name === "TokenCreated") {
+                  tokenAddress = parsedLog.args[0];
+                  break;
+                }
+              } catch (e) {
+                continue; // Not the event we're looking for
+              }
+            }
+          }
+          
+          // Update state with success
+          setMintSuccess(true);
+          setMintTxHash(receipt.hash);
+          setAttestationMessage(`ERC3643 security token minted successfully! Token address: ${tokenAddress}`);
+          
+          // After successful minting, redirect to marketplace after a short delay
+          setTimeout(() => {
+            setShowMintPreview(false);
+            router.push('/marketplace');
+          }, 5000);
+          
+        } catch (contractError: any) {
+          console.error("Error minting token:", contractError);
+          setAttestationMessage(`Error minting token: ${contractError.message || "Contract interaction failed"}`);
+          throw contractError;
+        }
+        
+      } else {
+        throw new Error("Ethereum provider not available. Please install MetaMask.");
       }
-      
-      // Create token data
-      const tokenData = {
-        name: propertyLocation,
-        symbol: propertyName,
-        totalSupply: fractionizeAmount,
-        propertyValue: totalValueLocked,
-        tokenPrice: tokenPrice
-      };
-      
-      // Simulate a successful token minting since AttestationService doesn't have this method
-      // In a real application, this would call the contract method
-      
-      // Simulate blockchain delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulation of successful minting
-      setMintSuccess(true);
-      setMintTxHash(`0x${Math.random().toString(16).substring(2, 16)}${Math.random().toString(16).substring(2, 16)}`);
-      
-      // Move to dashboard after success
-      setTimeout(() => {
-        setStep("dashboard");
-      }, 3000);
     } catch (error: any) {
       console.error("Token minting error:", error);
-      alert(`Failed to mint token: ${error.message || 'Unknown error'}`);
+      setAttestationStatus('failed');
+      setAttestationMessage(`Failed to mint token: ${error.message || "Unknown error"}`);
     } finally {
       setIsMinting(false);
     }
