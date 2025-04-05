@@ -2,6 +2,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000000";
+const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -31,41 +32,63 @@ module.exports = {
     ],
   },
   networks: {
-    hardhat: {},
-    hashkeyTestnet: {
-      url: "https://hashkeychain-testnet.alt.technology",
-      chainId: 133,
-      accounts: [PRIVATE_KEY],
-      gasPrice: 20000000000 // 20 gwei
+    hardhat: {
+      chainId: 31337
     },
     amoy: {
-      url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      chainId: 80002
+      url: "https://rpc-amoy.polygon.technology",
+      accounts: [PRIVATE_KEY],
+      chainId: 80002,
+      gasPrice: 20000000000, // 20 gwei
+      blockGasLimit: 20000000
+    },
+    mumbai: {
+      url: "https://rpc-mumbai.maticvigil.com",
+      accounts: [PRIVATE_KEY],
+      chainId: 80001
+    },
+    hashkeyChainTestnet: {
+      url: "https://hashkeychain-testnet.alt.technology",
+      accounts: [PRIVATE_KEY],
+      chainId: 133,
+      gasPrice: 20000000000, // 20 gwei
+      timeout: 60000 // Increase timeout to 60 seconds
+    },
+    // Alternative HashKey Chain Testnet config in case primary doesn't work
+    hashkeyChainTestnetAlt: {
+      url: "https://hkt-testnet.alt.technology",
+      accounts: [PRIVATE_KEY],
+      chainId: 133,
+      gasPrice: 20000000000, // 20 gwei
+      timeout: 120000 // Longer timeout (2 minutes)
     }
   },
   etherscan: {
     apiKey: {
-      hashkeyTestnet: "", // No API key needed
-      polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
+      polygonAmoy: POLYGONSCAN_API_KEY,
+      polygonMumbai: POLYGONSCAN_API_KEY,
+      hashkeyChainTestnet: "hashkeyscan" // Not actually used, but required by config
     },
     customChains: [
       {
-        network: "hashkeyTestnet",
-        chainId: 133,
-        urls: {
-          apiURL: "https://hashkeychain-testnet-explorer.alt.technology/api",
-          browserURL: "https://hashkeychain-testnet-explorer.alt.technology"
-        }
-      },
-      {
-        network: "amoy",
+        network: "polygonAmoy",
         chainId: 80002,
         urls: {
           apiURL: "https://api-amoy.polygonscan.com/api",
-          browserURL: "https://amoy.polygonscan.com/"
+          browserURL: "https://amoy.polygonscan.com"
+        }
+      },
+      {
+        network: "hashkeyChainTestnet",
+        chainId: 133,
+        urls: {
+          apiURL: "https://testnet-explorer-api.hashkey.cloud/api",
+          browserURL: "https://testnet-explorer.hashkey.cloud"
         }
       }
     ]
+  },
+  sourcify: {
+    enabled: true
   }
 }; 

@@ -2,6 +2,7 @@ import React, { createContext, useState, useContext, useEffect, ReactNode } from
 import { ethers } from 'ethers';
 import { createAttestationService } from '../utils/attestationService';
 import { createKYCService } from '../utils/kycService';
+import { createSBTService } from '../utils/sbtService';
 
 interface WalletContextType {
   walletConnected: boolean;
@@ -12,6 +13,7 @@ interface WalletContextType {
   errorMessage: string;
   attestationService: any;
   kycService: any;
+  sbtService: any;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   formatAddress: (address: string) => string;
@@ -26,6 +28,7 @@ const WalletContext = createContext<WalletContextType>({
   errorMessage: '',
   attestationService: null,
   kycService: null,
+  sbtService: null,
   connectWallet: async () => {},
   disconnectWallet: () => {},
   formatAddress: () => '',
@@ -44,7 +47,8 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [attestationService, setAttestationService] = useState<any>(null);
-  const [kycService, setKycService] = useState<any>(null);
+  const [kycService, setKYCService] = useState<any>(null);
+  const [sbtService, setSBTService] = useState<any>(null);
   
   // Format address for display
   const formatAddress = (address: string) => {
@@ -65,6 +69,8 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
         return 'HashKey Chain Mainnet';
       case '0x1388d1':
         return 'HashKey Chain Testnet';
+      case '0x13882':
+        return 'Polygon Amoy';
       default:
         return 'Unknown Network';
     }
@@ -83,8 +89,15 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
       // Initialize KYC service
       const kyc = await createKYCService();
       if (kyc) {
-        setKycService(kyc);
+        setKYCService(kyc);
         console.log('KYC service initialized');
+      }
+      
+      // Initialize SBT service
+      const sbt = await createSBTService();
+      if (sbt) {
+        setSBTService(sbt);
+        console.log('SBT service initialized');
       }
     } catch (error) {
       console.error('Service initialization error:', error);
@@ -135,7 +148,8 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
     setWalletAddress('');
     setChainId('');
     setAttestationService(null);
-    setKycService(null);
+    setKYCService(null);
+    setSBTService(null);
     
     // Clear localStorage
     localStorage.removeItem('walletConnected');
@@ -231,6 +245,7 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
     errorMessage,
     attestationService,
     kycService,
+    sbtService,
     connectWallet,
     disconnectWallet,
     formatAddress,

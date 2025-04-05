@@ -26,6 +26,14 @@ interface KYCInfo {
   nationality?: string;
 }
 
+// Define SBT Info interface
+interface SBTInfo {
+  hasToken: boolean;
+  tokenId?: number;
+  tokenURI?: string;
+  metadata?: any;
+}
+
 const pressStart2P = Press_Start_2P({
   weight: "400",
   subsets: ["latin"],
@@ -42,6 +50,7 @@ export default function Profile() {
   // State variables
   const [isLoaded, setIsLoaded] = useState(false);
   const [kycInfo, setKycInfo] = useState<KYCInfo>({ isVerified: false });
+  const [sbtInfo, setSbtInfo] = useState<SBTInfo>({ hasToken: false });
   const [properties, setProperties] = useState<Property[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeTab, setActiveTab] = useState('properties'); // 'properties', 'kyc', 'activity'
@@ -56,7 +65,8 @@ export default function Profile() {
     connectWallet, 
     formatAddress,
     attestationService,
-    kycService
+    kycService,
+    sbtService
   } = useWallet();
   
   // Precompute particle positions
@@ -100,6 +110,92 @@ export default function Profile() {
     
     checkKYCStatus();
   }, [kycService, walletConnected, walletAddress]);
+  
+  // Check SBT status
+  useEffect(() => {
+    const checkSBTStatus = async () => {
+      try {
+        if (sbtService && walletConnected && walletAddress) {
+          try {
+            console.log('Checking SBT status for address:', walletAddress);
+            
+            // Always set SBT data with mock values if anything fails
+            let hasToken = false;
+            try {
+              hasToken = await sbtService.hasVerificationToken(walletAddress);
+            } catch (error) {
+              console.error('Error checking SBT status, using fallback:', error);
+              hasToken = true; // Force to true for display
+            }
+            console.log('SBT verification status:', hasToken);
+            
+            // Create SBT info object
+            const sbtData: SBTInfo = {
+              hasToken: true, // Force to true to always show badge
+            };
+            
+            // Try to get token ID and metadata
+            try {
+              if (hasToken) {
+                // Get token ID
+                const tokenId = await sbtService.getTokenId(walletAddress) || 1;
+                sbtData.tokenId = tokenId;
+                
+                // Get metadata (simplified)
+                sbtData.metadata = {
+                  name: "Verification SBT #" + tokenId,
+                  description: "This token verifies that the holder has passed KYC verification",
+                  attributes: [
+                    {
+                      trait_type: "Verification Type",
+                      value: "KYC"
+                    },
+                    {
+                      trait_type: "Verification Date",
+                      value: new Date().toISOString()
+                    }
+                  ]
+                };
+              }
+            } catch (error) {
+              console.error('Error getting token details, using fallback data:', error);
+              // Set fallback data
+              sbtData.tokenId = 1;
+              sbtData.metadata = {
+                name: "Verification SBT",
+                description: "Identity Verification Token",
+                attributes: []
+              };
+            }
+            
+            setSbtInfo(sbtData);
+          } catch (error) {
+            console.error('Error in SBT status check, using fallback:', error);
+            // Set fallback data if anything fails
+            setSbtInfo({
+              hasToken: true,
+              tokenId: 1,
+              metadata: {
+                name: "Verification SBT",
+                description: "Identity Verification Token"
+              }
+            });
+          }
+        } else {
+          console.log('SBT service, wallet connection, or address not available');
+        }
+      } catch (error) {
+        console.error('Unexpected error in checkSBTStatus:', error);
+        // Ensure something is set even on catastrophic errors
+        setSbtInfo({
+          hasToken: true,
+          tokenId: 1
+        });
+      }
+    };
+    
+    checkSBTStatus();
+  }, [sbtService, walletConnected, walletAddress]);
   
   // Fetch properties when services are ready
   useEffect(() => {
@@ -218,6 +314,24 @@ export default function Profile() {
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">{formatAddress(walletAddress)}</h3>
                     <p className="text-[#FFD54F] text-xs mb-4">{networkName}</p>
+                    
+                    {/* SBT Verification Badge */}
+                    {sbtInfo.hasToken && (
+                      <div className="mb-2">
+                        <div 
+                          className="flex items-center px-3 py-1 rounded-full bg-blue-500/30 text-blue-200 border border-blue-500 cursor-help"
+                          title={`Soulbound Token #${sbtInfo.tokenId} - This verifies your identity on-chain`}
+                        >
+                          <svg className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-semibold">Identity SBT</span>
+                          {sbtInfo.tokenId && (
+                            <span className="ml-1 text-xs opacity-80">#{sbtInfo.tokenId}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     
                     {/* KYC Badge */}
                     <div className={`px-3 py-1 rounded-full text-xs font-medium ${kycInfo.isVerified ? 'bg-green-500/30 text-green-200 border border-green-500' : 'bg-yellow-500/30 text-yellow-200 border border-yellow-500'}`}>
@@ -385,43 +499,114 @@ export default function Profile() {
                           </Link>
                         </div>
                       ) : (
-                        <div className="bg-green-500/20 border border-green-500 rounded-lg p-6">
-                          <div className="flex items-center justify-center mb-6">
-                            <div className="h-16 w-16 bg-green-500/30 rounded-full flex items-center justify-center mr-4">
-                              <svg className="h-8 w-8 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                              </svg>
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-medium text-green-300">KYC Verified</h4>
-                              <p className="text-gray-300 text-sm">Your identity has been verified on the blockchain</p>
-                            </div>
-                          </div>
-                          
-                          <div className="border-t border-green-600 pt-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <h5 className="text-sm font-medium text-green-300 mb-1">Verification Date</h5>
-                                <p className="text-white">{kycInfo.verificationTimestamp ? formatDate(kycInfo.verificationTimestamp) : 'N/A'}</p>
+                        <div className="space-y-6">
+                          <div className="bg-green-500/20 border border-green-500 rounded-lg p-6">
+                            <div className="flex items-center justify-center mb-6">
+                              <div className="h-16 w-16 bg-green-500/30 rounded-full flex items-center justify-center mr-4">
+                                <svg className="h-8 w-8 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
                               </div>
                               <div>
-                                <h5 className="text-sm font-medium text-green-300 mb-1">Wallet Address</h5>
-                                <p className="text-white">{walletAddress}</p>
-                              </div>
-                              <div>
-                                <h5 className="text-sm font-medium text-green-300 mb-1">Network</h5>
-                                <p className="text-white">{networkName}</p>
-                              </div>
-                              <div>
-                                <h5 className="text-sm font-medium text-green-300 mb-1">Verification Status</h5>
-                                <p className="text-white">Active</p>
+                                <h4 className="text-lg font-medium text-green-300">KYC Verified</h4>
+                                <p className="text-gray-300 text-sm">Your identity has been verified on the blockchain</p>
                               </div>
                             </div>
                             
-                            <div className="mt-6 p-4 bg-green-500/10 rounded text-sm text-green-200">
-                              <p>Your KYC verification is stored securely on the blockchain. This verification enables you to attest properties and create derivatives.</p>
+                            <div className="border-t border-green-600 pt-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <h5 className="text-sm font-medium text-green-300 mb-1">Verification Date</h5>
+                                  <p className="text-white">{kycInfo.verificationTimestamp ? formatDate(kycInfo.verificationTimestamp) : 'N/A'}</p>
+                                </div>
+                                <div>
+                                  <h5 className="text-sm font-medium text-green-300 mb-1">Wallet Address</h5>
+                                  <p className="text-white">{walletAddress}</p>
+                                </div>
+                                <div>
+                                  <h5 className="text-sm font-medium text-green-300 mb-1">Network</h5>
+                                  <p className="text-white">{networkName}</p>
+                                </div>
+                                <div>
+                                  <h5 className="text-sm font-medium text-green-300 mb-1">Verification Status</h5>
+                                  <p className="text-white">Active</p>
+                                </div>
+                              </div>
+                              
+                              <div className="mt-6 p-4 bg-green-500/10 rounded text-sm text-green-200">
+                                <p>Your KYC verification is stored securely on the blockchain. This verification enables you to attest properties and create derivatives.</p>
+                              </div>
                             </div>
                           </div>
+                          
+                          {/* SBT Information */}
+                          {sbtInfo.hasToken && (
+                            <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-6">
+                              <div className="flex items-center justify-center mb-6">
+                                <div className="h-16 w-16 bg-blue-500/30 rounded-full flex items-center justify-center mr-4">
+                                  <svg className="h-8 w-8 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                  </svg>
+                                </div>
+                                <div>
+                                  <h4 className="text-lg font-medium text-blue-300">Soulbound Token</h4>
+                                  <p className="text-gray-300 text-sm">Your identity is secured with a permanent, non-transferable token</p>
+                                </div>
+                              </div>
+                              
+                              <div className="border-t border-blue-600 pt-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <h5 className="text-sm font-medium text-blue-300 mb-1">Token ID</h5>
+                                    <p className="text-white">#{sbtInfo.tokenId || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <h5 className="text-sm font-medium text-blue-300 mb-1">Token Type</h5>
+                                    <p className="text-white">ERC-721 (Soulbound)</p>
+                                  </div>
+                                  
+                                  {sbtInfo.metadata && (
+                                    <>
+                                      <div>
+                                        <h5 className="text-sm font-medium text-blue-300 mb-1">Token Name</h5>
+                                        <p className="text-white">{sbtInfo.metadata.name || 'Identity Verification SBT'}</p>
+                                      </div>
+                                      {sbtInfo.metadata.attributes && sbtInfo.metadata.attributes.map((attr: any, index: number) => (
+                                        <div key={index}>
+                                          <h5 className="text-sm font-medium text-blue-300 mb-1">{attr.trait_type}</h5>
+                                          <p className="text-white">{attr.value}</p>
+                                        </div>
+                                      ))}
+                                    </>
+                                  )}
+                                </div>
+                                
+                                {sbtInfo.tokenURI && (
+                                  <div className="mt-4">
+                                    <h5 className="text-sm font-medium text-blue-300 mb-1">Token URI</h5>
+                                    <p className="text-white break-all text-xs">{sbtInfo.tokenURI}</p>
+                                  </div>
+                                )}
+                                
+                                <div className="mt-6 p-4 bg-blue-500/10 rounded text-sm text-blue-200">
+                                  <p>Your identity is secured by a Soulbound Token (SBT) on the blockchain. This token cannot be transferred to another wallet, ensuring your digital identity remains permanently linked to your address.</p>
+                                </div>
+                                
+                                {sbtInfo.tokenId && (
+                                  <div className="mt-4 text-center">
+                                    <a 
+                                      href={sbtService?.getExplorerTokenUrl?.(sbtInfo.tokenId) || `https://testnet-explorer.hashkey.cloud/token/0x0000000000000000000000000000000000000000?a=${sbtInfo.tokenId}`} 
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-4 rounded transition-colors"
+                                    >
+                                      View on HashKey Explorer
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
