@@ -1,28 +1,36 @@
 {
-  "name": "brickfi",
+  "name": "frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postcompile": "cp artifacts/contracts/KYCVerifier.sol/KYCVerifier.json contracts/abis/"
   },
   "dependencies": {
-    "@chainlink/contracts": "^1.3.0",
-    "ethers": "^5.7.2",
     "next": "15.2.4",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^5.1.91",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tesseract.js": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^4.9.3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chai": "^4.3.10",
+    "dotenv": "^16.4.7",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "ethers": "^6.13.5",
+    "hardhat": "^2.22.19",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
