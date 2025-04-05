@@ -1853,7 +1853,647 @@ export default function Listing() {
               )}
             </div>
           ) : (
-            
+            <>
+              {/* KYC Form */}
+              {step === "kyc" && (
+                <div className={`backdrop-blur-sm bg-black/30 p-6 rounded-lg max-w-xl mx-auto ${isLoaded ? 'pixel-animation' : 'opacity-0'}`}>
+                  <h3 className="text-lg text-white mb-6 text-center">KYC Verification</h3>
+                  
+                  {/* Display blockchain verification status if available */}
+                  {kycVerificationStatus !== 'none' && (
+                    <div className={`mb-6 p-4 rounded-lg ${
+                      kycVerificationStatus === 'pending' ? 'bg-yellow-500/20 border border-yellow-500' :
+                      kycVerificationStatus === 'success' ? 'bg-green-500/20 border border-green-500' :
+                      'bg-red-500/20 border border-red-500'
+                    }`}>
+                      <p className="text-white text-xs">{kycVerificationMessage}</p>
+                      
+                      {kycTransactionHash && (
+                        <div className="mt-2">
+                          <p className="text-white/70 text-xs">Transaction Hash:</p>
+                          <p className="text-xs font-mono text-[#FFD54F] break-all">{kycTransactionHash}</p>
+                        </div>
+                      )}
+                      
+                      {kycVerificationStatus === 'success' && (
+                        <button
+                          onClick={() => setStep("attestation")}
+                          className="pixel-btn bg-green-600 text-xs py-2 px-4 text-white mt-3"
+                        >
+                          Proceed to Attestation
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
+                  <form onSubmit={handleKycSubmit} className="space-y-6">
+                    {/* Document Upload Section */}
+                    <div className="space-y-4 mb-8">
+                      <h4 className="text-white text-xs mb-2">Upload Identification Document</h4>
+                      
+                      <div className="space-y-2">
+                        <label className="block text-white text-xs">Document Type</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDocumentType("passport")}
+                            className={`py-2 text-xs ${documentType === "passport" ? 'bg-[#6200EA] text-white' : 'bg-black/20 text-white/70'} rounded border border-white/20`}
+                          >
+                            Passport
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDocumentType("driver_license")}
+                            className={`py-2 text-xs ${documentType === "driver_license" ? 'bg-[#6200EA] text-white' : 'bg-black/20 text-white/70'} rounded border border-white/20`}
+                          >
+                            Driver's License
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDocumentType("id_card")}
+                            className={`py-2 text-xs ${documentType === "id_card" ? 'bg-[#6200EA] text-white' : 'bg-black/20 text-white/70'} rounded border border-white/20`}
+                          >
+                            ID Card
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <div className="flex items-center">
+                          <input 
+                            type="file" 
+                            ref={fileInputRef}
+                            onChange={handleDocumentUpload}
+                            className="hidden" 
+                            accept="image/*,.pdf"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="pixel-btn bg-transparent border-white border-2 text-xs py-2 px-4 text-white cursor-pointer"
+                          >
+                            Upload Document
+                          </button>
+                          <span className="text-white text-xs ml-3">
+                            {documentFile ? documentFile.name : "No file chosen"}
+                          </span>
+                        </div>
+                        <p className="text-white/60 text-xs mt-1">
+                          Please upload a clear image of your {documentType === "passport" ? "passport" : documentType === "driver_license" ? "driver's license" : "ID card"}
+                        </p>
+                      </div>
+                      
+                      {/* Document Preview */}
+                      {documentPreview && (
+                        <div className="mt-4">
+                          <div className="border-2 border-dashed border-white/30 rounded-lg p-2 bg-black/20">
+                            <div className="aspect-video relative overflow-hidden rounded">
+                              <Image 
+                                src={documentPreview}
+                                alt="Document Preview" 
+                                layout="fill"
+                                objectFit="contain"
+                                className="rounded"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col items-center mt-3">
+                            <button
+                              type="button"
+                              onClick={scanDocument}
+                              disabled={isScanning || scanComplete}
+                              className={`pixel-btn ${isScanning ? 'bg-gray-500' : scanComplete ? 'bg-green-600' : 'bg-[#6200EA]'} text-xs py-2 px-4 text-white mx-auto`}
+                            >
+                              {isScanning ? `Scanning (${scanProgress}%)...` : scanComplete ? "Scan Complete ✓" : "Scan Document"}
+                            </button>
+                            
+                            {isScanning && (
+                              <div className="w-full max-w-xs mt-2">
+                                <div className="bg-black/30 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className="bg-purple-500 h-full transition-all duration-300"
+                                    style={{ width: `${scanProgress}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Scan Results Summary */}
+                      {scanComplete && (
+                        <div className="mt-4 p-3 bg-[#6200EA]/20 rounded-lg border border-[#6200EA]">
+                          <h5 className="text-white text-xs mb-2">Data Extraction Complete</h5>
+                          <p className="text-white/70 text-xs">
+                            We've extracted and securely encrypted your identity information.
+                          </p>
+                          <div className="mt-2 p-2 bg-black/30 rounded text-xs text-green-400 font-mono">
+                            {hashedData?.substring(0, 20) + "..." || "Hash generation error"}
+                          </div>
+                          
+                          {/* Debugging section - can be removed in production */}
+                          <div className="mt-3 border-t border-purple-500/30 pt-2">
+                            <details>
+                              <summary className="text-white/70 text-xs cursor-pointer">View extracted text (for debugging)</summary>
+                              <div className="mt-2 p-2 bg-black/50 rounded text-xs text-white/60 font-mono h-24 overflow-y-auto">
+                                {extractedText || "No text extracted"}
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Add new section for blockchain verification */}
+                    <div className="border-t border-white/10 pt-6 mt-6">
+                      <h4 className="text-white text-xs mb-4">Blockchain Verification</h4>
+                      <p className="text-white/70 text-xs mb-4">
+                        Your KYC data will be securely verified on-chain. Only a hash of your data is stored, 
+                        keeping your personal information private while providing cryptographic proof of verification.
+                      </p>
+                      
+                      {/* Show wallet connection status */}
+                      <div className="bg-black/30 p-3 rounded-lg mb-4">
+                        <div className="flex items-center">
+                          <div className={`w-3 h-3 rounded-full mr-2 ${walletConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                          <p className="text-white text-xs">
+                            {walletConnected ? 'Wallet Connected' : 'Connect wallet to enable blockchain verification'}
+                          </p>
+                        </div>
+                        {walletConnected && (
+                          <>
+                            <p className="text-white/60 text-xs mt-1">Address: {walletAddress}</p>
+                            {networkName && (
+                              <p className="text-white/60 text-xs mt-1">Network: {networkName}</p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      
+                      {/* Show switch network button if not on HashKey Chain */}
+                      {walletConnected && networkName !== "HashKey Chain Testnet" && (
+                        <button
+                          onClick={switchToHashKeyChain}
+                          className="pixel-btn bg-[#FFD54F] text-xs py-2 px-4 text-black mb-4 w-full"
+                        >
+                          Switch to HashKey Chain Testnet
+                        </button>
+                      )}
+                      
+                      {/* Display transaction hash and explorer link if available */}
+                      {kycTransactionHash && kycVerificationStatus === 'success' && (
+                        <div className="bg-green-900/30 p-3 rounded-lg mt-3">
+                          <p className="text-white text-xs mb-2">Transaction Details:</p>
+                          <a 
+                            href={`https://hashkeychain-testnet-explorer.alt.technology/tx/${kycTransactionHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#FFD54F] underline text-xs"
+                          >
+                            View on HashKey Chain Explorer
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button 
+                      type="submit"
+                      className={`pixel-btn text-xs py-3 px-6 text-white mx-auto block mt-8 ${
+                        !scanComplete || kycVerificationStatus === 'pending' 
+                          ? 'bg-gray-500 cursor-not-allowed' 
+                          : 'bg-[#6200EA]'
+                      }`}
+                      disabled={!scanComplete || kycVerificationStatus === 'pending'}
+                    >
+                      {kycVerificationStatus === 'pending' 
+                        ? 'Verifying...' 
+                        : kycVerificationStatus === 'success' 
+                          ? 'Verified ✓' 
+                          : 'Verify Identity'}
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Attestation Form */}
+              {step === "attestation" && (
+                <div className={`${isLoaded ? 'pixel-animation' : 'opacity-0'}`}>
+                  <div className="backdrop-blur-sm bg-black/30 p-6 rounded-lg">
+                    <h3 className="text-xl text-white mb-6">Asset Attestation</h3>
+                    
+                    <form onSubmit={handleAttestationSubmit} className="space-y-6">
+                      <div className="mb-6">
+                        <h4 className="text-white text-sm mb-2">RWA Attestation Process</h4>
+                        <p className="text-white/70 text-xs">
+                          Submit your property documents and photos for blockchain attestation. Our system will automatically extract 
+                          property details for verification. Complete these steps to tokenize your real world asset on the blockchain.
+                        </p>
+                      </div>
+                    
+                      {/* Asset Photo Upload */}
+                      <div className="space-y-2 border border-white/20 p-4 rounded">
+                        <h5 className="text-white text-xs font-bold mb-3">Step 1: Upload Asset Photos</h5>
+                        <p className="text-white/60 text-xs mb-3">
+                          Upload clear photos of your property. These images will be used to verify the asset's condition and features.
+                        </p>
+                        <div className="flex items-center">
+                          <input 
+                            type="file" 
+                            id="assetPhotos"
+                            onChange={handleAssetPhotoUpload}
+                            className="hidden"
+                            accept="image/*"
+                            multiple
+                          />
+                          <label 
+                            htmlFor="assetPhotos" 
+                            className="pixel-btn bg-[#4CAF50] text-xs py-2 px-4 text-white cursor-pointer"
+                          >
+                            Upload Photos
+                          </label>
+                          <span className="text-white text-xs ml-3">
+                            {assetPhotos.length > 0 ? `${assetPhotos.length} photos selected` : "No photos uploaded"}
+                          </span>
+                        </div>
+                        
+                        {/* Photo Previews */}
+                        {assetPhotos.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2 mt-2">
+                            {assetPhotoUrls.map((url, index) => (
+                              <div key={index} className="relative aspect-square border border-white/20 rounded overflow-hidden">
+                                <Image
+                                  src={url}
+                                  alt={`Property photo ${index + 1}`}
+                                  layout="fill"
+                                  objectFit="cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeAssetPhoto(index)}
+                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                                  aria-label="Remove photo"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Multiple Documents Upload */}
+                      <div className="space-y-2 border border-white/20 p-4 rounded">
+                        <h5 className="text-white text-xs font-bold mb-3">Step 2: Upload & Scan Legal Documents</h5>
+                        <p className="text-white/60 text-xs mb-3">
+                          Upload property documents (deed, title, tax certificates). Our system will automatically 
+                          extract and verify the property information.
+                        </p>
+                        <div className="flex items-center">
+                          <input 
+                            type="file" 
+                            id="legalDocumentation"
+                            onChange={handleLegalDocsUpload}
+                            className="hidden"
+                            accept=".pdf,image/*,.doc,.docx"
+                            multiple
+                          />
+                          <label 
+                            htmlFor="legalDocumentation" 
+                            className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white cursor-pointer"
+                          >
+                            Upload Documents
+                          </label>
+                          <span className="text-white text-xs ml-3">
+                            {legalDocs.length > 0 ? `${legalDocs.length} documents selected` : "No documents uploaded"}
+                          </span>
+                        </div>
+                        
+                        {/* Document List */}
+                        {legalDocs.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {legalDocs.map((doc, index) => (
+                              <div key={index} className="flex justify-between items-center bg-black/30 rounded p-2">
+                                <div className="flex items-center">
+                                  <div className="bg-[#6200EA] p-1 rounded mr-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  </div>
+                                  <span className="text-white text-xs truncate max-w-xs">{doc.name}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => scanLegalDocument(index)}
+                                    className={`pixel-btn text-xs mr-2 py-1 px-2 ${
+                                      docScanStatuses[index] === 'scanned' ? 'bg-green-600 text-white' :
+                                      docScanStatuses[index] === 'scanning' ? 'bg-yellow-600 text-white' :
+                                      'bg-[#6200EA] text-white'
+                                    }`}
+                                    disabled={docScanStatuses[index] === 'scanning' || docScanStatuses[index] === 'scanned'}
+                                  >
+                                    {docScanStatuses[index] === 'scanned' ? 'Scanned ✓' :
+                                     docScanStatuses[index] === 'scanning' ? 'Scanning...' :
+                                     'Scan Document'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLegalDoc(index)}
+                                    className="text-red-400 hover:text-red-300"
+                                    aria-label="Remove document"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Scan Results Display */}
+                      {propertyDataExtracted && (
+                        <div className="border border-green-500 p-4 rounded bg-green-900/20">
+                          <h5 className="text-white text-xs font-bold mb-3">Step 3: Review Extracted Property Data</h5>
+                          <p className="text-white/70 text-xs mb-3">
+                            We've successfully extracted the following property details from your documents:
+                          </p>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            {extractedProperties.deedNumber && (
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Deed Number:</p>
+                                <p className="text-white text-xs">{extractedProperties.deedNumber}</p>
+                              </div>
+                            )}
+                            {extractedProperties.address && (
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Property Address:</p>
+                                <p className="text-white text-xs">{extractedProperties.address}</p>
+                              </div>
+                            )}
+                            {extractedProperties.ownerName && (
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Owner Name:</p>
+                                <p className="text-white text-xs">{extractedProperties.ownerName}</p>
+                              </div>
+                            )}
+                            {extractedProperties.taxId && (
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Tax ID:</p>
+                                <p className="text-white text-xs">{extractedProperties.taxId}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <p className="text-white/60 text-xs">Data Hash:</p>
+                            <p className="text-xs font-mono text-green-400 break-all">
+                              {propertyDataHash?.substring(0, 20) + "..." || "Hash generation error"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Blockchain Attestation Status */}
+                      <div className="border border-white/20 p-4 rounded">
+                        <h5 className="text-white text-xs font-bold mb-3">Step 4: Submit Blockchain Attestation</h5>
+                        <p className="text-white/70 text-xs mb-3">
+                          Your property data will be securely verified on-chain. This creates an immutable record
+                          of your ownership while keeping sensitive data private through encryption.
+                        </p>
+                        
+                        {/* Show attestation status */}
+                        <div className="bg-black/30 p-3 rounded-lg mb-4">
+                          <div className="flex items-center">
+                            <div className={`w-3 h-3 rounded-full mr-2 ${
+                              attestationStatus === 'pending' ? 'bg-yellow-500' :
+                              attestationStatus === 'success' ? 'bg-green-500' :
+                              attestationStatus === 'failed' ? 'bg-red-500' :
+                              'bg-gray-500'
+                            }`}></div>
+                            <p className="text-white text-xs">
+                              {attestationStatus === 'pending' ? 'Attestation in progress...' :
+                               attestationStatus === 'success' ? 'Attestation verified successfully' :
+                               attestationStatus === 'failed' ? 'Attestation failed' :
+                               'Ready for attestation'}
+                            </p>
+                          </div>
+                          
+                          {attestationTxHash && (
+                            <div className="mt-2">
+                              <p className="text-white/60 text-xs">Transaction Hash:</p>
+                              <a 
+                                href={`https://hashkeychain-testnet-explorer.alt.technology/tx/${attestationTxHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#FFD54F] underline text-xs break-all"
+                              >
+                                {attestationTxHash}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input 
+                          type="checkbox" 
+                          id="termsConditions"
+                          className="mr-3 h-4 w-4"
+                          required
+                        />
+                        <label htmlFor="termsConditions" className="text-white text-xs">
+                          I certify that all information extracted from my documents is accurate and I own the rights to tokenize this asset
+                        </label>
+                      </div>
+                      
+                      <div className="flex justify-between pt-4">
+                        <button 
+                          type="button"
+                          onClick={() => setStep("kyc")}
+                          className="pixel-btn bg-transparent border-white border-2 text-xs py-3 px-6 text-white"
+                        >
+                          Back
+                        </button>
+                        <button 
+                          type="submit"
+                          className={`pixel-btn text-xs py-3 px-6 text-white ${
+                            legalDocs.length === 0 || !propertyDataExtracted || assetPhotos.length === 0 ? 
+                            'bg-gray-500 cursor-not-allowed' : 'bg-[#6200EA]'
+                          }`}
+                          disabled={legalDocs.length === 0 || !propertyDataExtracted || assetPhotos.length === 0}
+                        >
+                          Submit Attestation
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Dashboard */}
+              {step === "dashboard" && (
+                <div className={`${isLoaded ? 'pixel-animation' : 'opacity-0'}`}>
+                  <div className="backdrop-blur-sm bg-black/30 p-6 rounded-lg mb-8">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg text-white">Available Listings</h3>
+                      <button
+                        onClick={() => setStep("attestation")}
+                        className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white"
+                      >
+                        + New Listing
+                      </button>
+                    </div>
+                    
+                    {/* Recently submitted property - shows at top if attestation was just completed */}
+                    {attestationComplete && (
+                      <div className="bg-[#6200EA]/20 backdrop-blur-sm p-6 rounded-lg mb-8 border-2 border-[#6200EA]">
+                        <div className="flex flex-col md:flex-row gap-6">
+                          {/* Property Images */}
+                          <div className="md:w-1/3">
+                            <div className="aspect-video rounded-lg overflow-hidden bg-black/40 mb-2">
+                              {assetPhotoUrls.length > 0 ? (
+                                <Image
+                                  src={assetPhotoUrls[0]}
+                                  alt="Property Main Image"
+                                  layout="responsive"
+                                  width={16}
+                                  height={9}
+                                  objectFit="cover"
+                                />
+                              ) : (
+                                <div className="h-full w-full flex items-center justify-center bg-gradient-to-r from-purple-800 to-indigo-800">
+                                  <span className="text-white text-xs">No images available</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {assetPhotoUrls.length > 1 && (
+                              <div className="grid grid-cols-4 gap-1">
+                                {assetPhotoUrls.slice(1, 5).map((url, idx) => (
+                                  <div key={idx} className="aspect-square rounded overflow-hidden bg-black/40">
+                                    <Image
+                                      src={url}
+                                      alt={`Property Image ${idx + 2}`}
+                                      layout="responsive"
+                                      width={1}
+                                      height={1}
+                                      objectFit="cover"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Property Details */}
+                          <div className="md:w-2/3">
+                            <div className="flex justify-between items-start mb-3">
+                              <h4 className="text-white text-sm font-bold">{propertyName}</h4>
+                              <span className="text-xs text-white bg-green-600 px-2 py-1 rounded">Verified on Chain</span>
+                            </div>
+                            
+                            <p className="text-white/80 text-xs mb-4">{propertyDescription}</p>
+                            
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Property Address:</p>
+                                <p className="text-white text-xs">{propertyAddress}</p>
+                              </div>
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Deed Number:</p>
+                                <p className="text-white text-xs">{deedNumber}</p>
+                              </div>
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Owner:</p>
+                                <p className="text-white text-xs">{extractedProperties.ownerName || fullName}</p>
+                              </div>
+                              <div className="bg-black/30 p-2 rounded">
+                                <p className="text-white/60 text-xs">Tax ID:</p>
+                                <p className="text-white text-xs">{extractedProperties.taxId || taxId || "Not available"}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <span className="text-xs text-white/60">Fractions:</span>
+                                <span className="text-xs text-white ml-2">{fractionizeAmount}</span>
+                              </div>
+                              <div>
+                                <span className="text-xs text-white/60">Verified:</span>
+                                <span className="text-xs text-white ml-2">Just now</span>
+                              </div>
+                              <div>
+                                <a 
+                                  href={`https://hashkeychain-testnet-explorer.alt.technology/tx/${attestationTxHash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="pixel-btn bg-[#4CAF50]/70 text-xs py-1 px-3 text-white"
+                                >
+                                  View on Explorer
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Listing Table */}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full">
+                        <thead>
+                          <tr className="border-b border-white/20">
+                            <th className="px-4 py-3 text-left text-xs text-white">Property</th>
+                            <th className="px-4 py-3 text-left text-xs text-white">Availability</th>
+                            <th className="px-4 py-3 text-left text-xs text-white">Price per Token</th>
+                            <th className="px-4 py-3 text-center text-xs text-white">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sampleListings.map((listing) => (
+                            <tr key={listing.id} className="border-b border-white/10 hover:bg-white/5">
+                              <td className="px-4 py-4">
+                                <div className="flex items-center">
+                                  <div className="h-10 w-10 rounded overflow-hidden bg-gray-800 mr-3">
+                                    <div className="h-full w-full bg-gradient-to-r from-purple-500 to-indigo-500"></div>
+                                  </div>
+                                  <div>
+                                    <p className="text-white text-xs">{listing.propertyName}</p>
+                                    <p className="text-white/60 text-xs">{listing.description.substring(0, 30)}...</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="relative h-2 w-24 bg-white/20 rounded-full overflow-hidden">
+                                  <div 
+                                    className="absolute top-0 left-0 h-full bg-[#4CAF50]"
+                                    style={{ width: listing.availability }}
+                                  ></div>
+                                </div>
+                                <span className="text-white text-xs mt-1 block">{listing.availability}</span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className="text-[#FFD54F] text-xs">{listing.price}</span>
+                              </td>
+                              <td className="px-4 py-4 text-center">
+                                <button className="pixel-btn bg-transparent border-[#4CAF50] border text-xs py-1 px-3 text-white">
+                                  View
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
 
