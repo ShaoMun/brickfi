@@ -119,5 +119,168 @@ export default function Listing() {
   const [attestationService, setAttestationService] = useState<AttestationService | null>(null);
   const [propertyDataExtracted, setPropertyDataExtracted] = useState(false);
 
+  useEffect(() => {
+    setIsLoaded(true);
+    setIsClient(true);
+    
+    // Load Tesseract.js script dynamically
+    const tesseractScript = document.createElement('script');
+    tesseractScript.src = 'https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js';
+    tesseractScript.async = true;
+    document.body.appendChild(tesseractScript);
+    
+    // Check if wallet is already connected
+    checkIfWalletIsConnected();
+    
+    // Setup wallet event listeners
+    if (typeof window !== 'undefined' && window.ethereum) {
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+      window.ethereum.on('disconnect', handleDisconnect);
+    }
+    
+    return () => {
+      document.body.removeChild(tesseractScript);
+      
+      // Cleanup wallet event listeners
+      if (typeof window !== 'undefined' && window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+        window.ethereum.removeListener('disconnect', handleDisconnect);
+      }
+    };
+  }, []);
   
+  // Check if wallet is already connected
+  const checkIfWalletIsConnected = async () => {
+    try {
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') return;
+      
+      // Check if ethereum provider exists (e.g., MetaMask)
+      if (!window.ethereum) {
+        setWalletError("No Ethereum wallet found. Please install MetaMask.");
+        return;
+      }
+      
+      // Get the chainId and set network name
+      const chainId = window.ethereum.chainId;
+      updateNetworkName(chainId);
+      
+      // Check if already connected
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      
+      if (accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        setWalletConnected(true);
+        setWalletError(null);
+        console.log("Wallet already connected:", accounts[0]);
+      }
+    } catch (error) {
+      console.error("Failed to check wallet connection:", error);
+      setWalletError("Failed to check wallet connection. Please try again.");
+    }
+  };
+  
+  // Handler for account changes
+  const handleAccountsChanged = (accounts: string[]) => {
+    if (accounts.length === 0) {
+      // User disconnected their wallet
+      setWalletConnected(false);
+      setWalletAddress("");
+      setWalletError("Wallet disconnected.");
+    } else {
+      // Update with the new account
+      setWalletAddress(accounts[0]);
+      setWalletConnected(true);
+      setWalletError(null);
+    }
+  };
+  
+  // Handler for chain/network changes
+  const handleChainChanged = (chainId: string) => {
+    // Refresh the page as recommended by MetaMask
+    updateNetworkName(chainId);
+    console.log("Network changed to:", chainId);
+    // Optional: window.location.reload();
+  };
+  
+  // Handler for disconnect event
+  const handleDisconnect = (error: { code: number; message: string }) => {
+    setWalletConnected(false);
+    setWalletAddress("");
+    setWalletError(`Wallet disconnected: ${error.message}`);
+  };
+  
+  // Update network name based on chainId
+  const updateNetworkName = (chainId: string | undefined) => {
+    if (!chainId) return;
+    
+    const networks: { [key: string]: string } = {
+      '0x1': 'Ethereum Mainnet',
+      '0x3': 'Ropsten Testnet',
+      '0x4': 'Rinkeby Testnet',
+      '0x5': 'Goerli Testnet',
+      '0x2a': 'Kovan Testnet',
+      '0x38': 'Binance Smart Chain',
+      '0x89': 'Polygon Mainnet',
+      '0x13881': 'Polygon Mumbai',
+      '0xa86a': 'Avalanche Mainnet',
+      '0xa': 'Optimism Mainnet',
+      '0xa4b1': 'Arbitrum One',
+      '0x85': 'HashKey Chain Testnet'  // Chain ID 133 in hex
+    };
+    
+    setNetworkName(networks[chainId] || `Chain ID: ${parseInt(chainId, 16)}`);
+    
+    // Check if we're on HashKey Chain testnet
+    if (chainId !== "0x85") { // 133 in hex
+      console.warn("Not connected to HashKey Chain Testnet. KYC contract may not work correctly.");
+      setWalletError("Please connect to HashKey Chain Testnet for KYC verification");
+    } else {
+      setWalletError(null);
+    }
+  };
+  
+  // Function to switch to HashKey Chain Testnet
+  const switchToHashKeyChain = async () => {
+    if (!window.ethereum) return;
+    
+    try {
+      // Try to switch to HashKey Chain Testnet
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x85' }], // 133 in hex
+      });
+    } catch (switchError: any) {
+      // This error code indicates that the chain has not been added to MetaMask
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: '0x85', // 133 in hex
+                chainName: 'HashKey Chain Testnet',
+                nativeCurrency: {
+                  name: 'HSK',
+                  symbol: 'HSK',
+                  decimals: 18,
+                },
+                rpcUrls: ['https://hashkeychain-testnet.alt.technology'],
+                blockExplorerUrls: ['https://hashkeychain-testnet-explorer.alt.technology'],
+              },
+            ],
+          });
+        } catch (addError) {
+          console.error('Error adding HashKey Chain network:', addError);
+          setWalletError('Could not add HashKey Chain network to your wallet');
+        }
+      } else {
+        console.error('Error switching to HashKey Chain network:', switchError);
+        setWalletError('Error switching to HashKey Chain network');
+      }
+    }
+  };
+
 } 
