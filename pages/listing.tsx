@@ -1630,5 +1630,245 @@ export default function Listing() {
     }
   };
 
-  
+  // Remove asset photo
+  const removeAssetPhoto = (index: number) => {
+    setAssetPhotos(prevPhotos => prevPhotos.filter((_, i) => i !== index));
+    setAssetPhotoUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
+  };
+
+  // Remove legal document
+  const removeLegalDoc = (index: number) => {
+    setLegalDocs(prevDocs => prevDocs.filter((_, i) => i !== index));
+  };
+
+  // Extract property data from scanned documents with enhanced pattern recognition
+  const extractPropertyData = (text: string) => {
+    // Clean up the text - remove extra whitespace and make lowercase for easier matching
+    const cleanText = text.toLowerCase().replace(/\s+/g, ' ').trim();
+    console.log("Clean text:", cleanText); // For development debugging
+    
+    // Initialize extracted data object
+    const extractedData: { 
+      deedNumber?: string;
+      address?: string;
+      ownerName?: string;
+      taxId?: string;
+    } = {};
+    
+    // Split text into lines for better analysis
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line);
+    
+    // Enhanced pattern matching for property documents
+    
+    // Deed/Title Number patterns
+    const deedNumberPatterns = [
+      /deed\s*(?:number|no|#)?[:\s]*([a-z0-9\-]+)/i,
+      /title\s*(?:number|no|#)?[:\s]*([a-z0-9\-]+)/i,
+      /property\s*id[:\s]*([a-z0-9\-]+)/i,
+      /reference\s*(?:number|no|#)?[:\s]*([a-z0-9\-]+)/i,
+      /recording\s*(?:number|no|#)?[:\s]*([a-z0-9\-]+)/i,
+      /d([0-9]{5,7})/i
+    ];
+    
+    // Address patterns
+    const addressPatterns = [
+      /property\s*address[:\s]*([^,\n]{5,}(?:,[^,\n]+)*)/i,
+      /address[:\s]*([^,\n]{5,}(?:,[^,\n]+)*)/i,
+      /property\s*location[:\s]*([^,\n]{5,}(?:,[^,\n]+)*)/i,
+      /location[:\s]*([^,\n]{5,}(?:,[^,\n]+)*)/i
+    ];
+    
+    // Owner name patterns
+    const ownerPatterns = [
+      /owner(?:\(s\))?[:\s]*([^,\n]{2,})/i,
+      /owner\s*name[:\s]*([^,\n]{2,})/i,
+      /legal\s*owner[:\s]*([^,\n]{2,})/i,
+      /owner\s*of\s*record[:\s]*([^,\n]{2,})/i
+    ];
+    
+    // Tax ID patterns
+    const taxIdPatterns = [
+      /tax\s*(?:id|identification)[:\s]*([a-z0-9\-]+)/i,
+      /tax\s*(?:parcel|reference)[:\s]*([a-z0-9\-]+)/i,
+      /parcel\s*(?:id|number)[:\s]*([a-z0-9\-]+)/i,
+      /tax\s*number[:\s]*([a-z0-9\-]+)/i,
+      /tx[:\s\-]*([0-9]{3,5})/i
+    ];
+    
+    // Function to apply patterns to text
+    const extractWithPatterns = (patterns: RegExp[], text: string): string | undefined => {
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match && match[1] && match[1].trim().length > 0) {
+          return match[1].trim();
+        }
+      }
+      
+      // Try line by line if no match in full text
+      for (const line of lines) {
+        for (const pattern of patterns) {
+          const match = line.match(pattern);
+          if (match && match[1] && match[1].trim().length > 0) {
+            return match[1].trim();
+          }
+        }
+      }
+      
+      return undefined;
+    };
+    
+    // Extract each field using the patterns
+    extractedData.deedNumber = extractWithPatterns(deedNumberPatterns, cleanText);
+    extractedData.address = extractWithPatterns(addressPatterns, cleanText);
+    extractedData.ownerName = extractWithPatterns(ownerPatterns, cleanText);
+    extractedData.taxId = extractWithPatterns(taxIdPatterns, cleanText);
+    
+    return extractedData;
+  };
+
+  return (
+    <div className={`${pressStart2P.variable} min-h-screen relative overflow-hidden`}>
+      <Head>
+        <title>RWA DeFi - Asset Listing</title>
+        <meta name="description" content="List your real world assets on the blockchain" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      
+      {/* Load Tesseract.js */}
+      <Script
+        src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"
+        strategy="beforeInteractive"
+      />
+      
+      {/* Load ethers.js */}
+      <Script
+        src="https://cdn.ethers.io/lib/ethers-5.6.umd.min.js"
+        strategy="beforeInteractive"
+      />
+
+      {/* Canvas used for image preprocessing (hidden) */}
+      <canvas 
+        ref={canvasRef} 
+        style={{ display: 'none' }}
+      />
+
+      {/* Background Image */}
+      <div className="absolute inset-0 w-full h-full z-0">
+        <Image 
+          src="/listing_bg.png" 
+          alt="Listing Background" 
+          layout="fill"
+          objectFit="cover"
+          quality={100}
+          priority
+        />
+      </div>
+
+      {/* Yellow particles animation */}
+      <div className="absolute inset-0 z-10 pointer-events-none">
+        {Array.from({ length: 15 }).map((_, i) => (
+          <div 
+            key={i}
+            className="absolute w-1 h-1 bg-[#FFC107] rounded-full animate-pulse"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 5}s`,
+              animationDuration: `${3 + Math.random() * 7}s`
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div className="relative z-20 w-full h-full min-h-screen">
+        {/* Header */}
+        <header className="container mx-auto flex justify-between items-center pt-6 px-4">
+          <Link href="/" className="flex items-center cursor-pointer">
+            <div className="bg-black/30 backdrop-blur-sm p-2 rounded">
+              <Image 
+                src="/images/pixel-logo.svg" 
+                alt="RWA DeFi Logo" 
+                width={45} 
+                height={45}
+                priority
+              />
+            </div>
+            <h1 className="ml-4 text-xl font-bold text-white">RWA<span className="text-[#FFD54F]">DeFi</span></h1>
+          </Link>
+          <nav className="hidden md:flex gap-6">
+            <Link href="/listing" className="pixel-btn bg-transparent backdrop-blur-sm border-[#6200EA] border-2 py-2 px-3 text-xs text-white hover:bg-[#6200EA]/50 transition-colors">Listing</Link>
+            <Link href="/derivative" className="pixel-btn bg-transparent backdrop-blur-sm border-[#4CAF50] border-2 py-2 px-3 text-xs text-white hover:bg-[#4CAF50]/50 transition-colors">Derivative</Link>
+          </nav>
+          <div className="flex flex-col items-end">
+            <button 
+              onClick={connectWallet} 
+              className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white"
+            >
+              {walletConnected ? 
+                `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}` : 
+                "Connect Wallet"
+              }
+            </button>
+            {networkName && walletConnected && (
+              <span className="text-xs text-[#FFD54F] mt-1">{networkName}</span>
+            )}
+            {walletError && (
+              <span className="text-xs text-red-400 mt-1">{walletError}</span>
+            )}
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="container mx-auto py-12 px-4">
+          {/* Title */}
+          <div className="text-center mb-12">
+            <h2 className="text-2xl font-bold text-white mb-4">Asset Listing Portal</h2>
+            <p className="text-xs text-white/80 max-w-2xl mx-auto">
+              Tokenize and fractionize your real world assets securely through our verification process.
+            </p>
+          </div>
+
+          {!walletConnected ? (
+            <div className="backdrop-blur-sm bg-black/30 p-6 rounded-lg max-w-md mx-auto">
+              <p className="text-white text-center text-xs mb-6">Please connect your wallet to continue</p>
+              <button 
+                onClick={connectWallet}
+                className="pixel-btn bg-[#6200EA] text-xs py-3 px-6 text-white mx-auto block"
+              >
+                Connect Wallet
+              </button>
+              {isClient && !window.ethereum && (
+                <div className="mt-4 text-center">
+                  <p className="text-yellow-300 text-xs mb-2">No wallet detected</p>
+                  <a 
+                    href="https://metamask.io/download/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-[#FFD54F] underline text-xs"
+                  >
+                    Install MetaMask
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : (
+            
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="container mx-auto py-6 px-4 relative z-20">
+          <div className="flex flex-col md:flex-row justify-between items-center backdrop-blur-sm bg-black/30 p-4 rounded-lg">
+            <p className="text-xs text-white/70">© 2025 RWA DeFi. All rights reserved.</p>
+            <div className="flex gap-4 mt-4 md:mt-0">
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Discord</a>
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Twitter</a>
+              <a href="#" className="pixel-btn bg-transparent border-white/50 border px-3 py-1 text-xs text-white/70 hover:bg-white/10 transition-colors">Docs</a>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
 } 
