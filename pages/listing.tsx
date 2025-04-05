@@ -1277,5 +1277,134 @@ export default function Listing() {
     }
   };
 
+  // Initialize attestation service when wallet is connected - add this after the KYC service initialization
+  useEffect(() => {
+    if (walletConnected && typeof window !== 'undefined') {
+      const initAttestationService = async () => {
+        try {
+          console.log('Initializing attestation service...');
+          const service = await createAttestationService();
+          if (service) {
+            setAttestationService(service);
+            console.log('Attestation service initialized successfully');
+          } else {
+            console.error('Failed to create attestation service');
+          }
+        } catch (error) {
+          console.error('Error initializing attestation service:', error);
+        }
+      };
+      
+      initAttestationService();
+    }
+  }, [walletConnected]);
+
+  // Handle attestation submission
+  const handleAttestationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    // Validate attestation data
+    if (!legalDocs.length || !assetPhotos.length) {
+      alert("Please upload at least one legal document and one asset photo");
+      return;
+    }
+    
+    if (!propertyDataExtracted || !propertyDataHash) {
+      alert("Please scan at least one document to extract property data");
+      return;
+    }
+    
+    // Check if wallet is connected
+    if (!walletConnected) {
+      alert("Please connect your wallet to submit attestation");
+      return;
+    }
+    
+    // Check if KYC is completed
+    if (!kycCompleted) {
+      alert("Please complete KYC verification before submitting attestation");
+      return;
+    }
+    
+    // Check if attestation service is initialized
+    if (!attestationService) {
+      alert("Attestation service is not initialized. Please try again.");
+      return;
+    }
+    
+    // Set attestation status to pending
+    setAttestationStatus('pending');
+    
+    try {
+      // Prepare photo hashes - in a real app, you'd upload to IPFS and get hashes
+      const photoHashes = assetPhotoUrls.map((_, index) => 
+        `photo_${index}_${Math.random().toString(36).substring(2, 10)}`
+      );
+      
+      // Use the extracted property data from scanned documents
+      // If a field is missing, use the current state value as fallback
+      const propertyData = {
+        propertyName: extractedProperties.deedNumber?.split('-')[0] || "Property " + Math.floor(Math.random() * 1000),
+        propertyDescription: "Property attested through blockchain verification",
+        propertyAddress: extractedProperties.address || propertyAddress,
+        deedNumber: extractedProperties.deedNumber || deedNumber,
+        ownerName: extractedProperties.ownerName || fullName,
+        taxId: extractedProperties.taxId || taxId,
+        fractionizeAmount: "1000", // Default fractionization amount
+        photoHashes
+      };
+      
+      // Update state with the data that will be submitted
+      setPropertyName(propertyData.propertyName);
+      setPropertyDescription(propertyData.propertyDescription);
+      setPropertyAddress(propertyData.propertyAddress);
+      setDeedNumber(propertyData.deedNumber);
+      setFractionizeAmount(propertyData.fractionizeAmount);
+      
+      console.log("Submitting attestation with data:", propertyData);
+      
+      // Submit attestation to blockchain
+      const result = await attestationService.attestProperty(propertyData, photoHashes);
+      
+      if (result.success) {
+        setAttestationStatus('success');
+        setAttestationTxHash(result.txHash || null);
+        setAttestationComplete(true);
+        
+        // Show success message
+        alert("Property attestation successful! Your asset is now verified on the blockchain and ready for listing.");
+        
+        // Proceed to dashboard after a short delay
+        setTimeout(() => {
+          setStep("dashboard");
+        }, 2000);
+      } else {
+        setAttestationStatus('failed');
+        alert(`Attestation failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      console.error('Error during attestation submission:', error);
+      setAttestationStatus('failed');
+      alert(`Error: ${error.message || 'Unknown error during attestation'}`);
+    }
+  };
+
+  // Handle asset photo upload
+  const handleAssetPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setAssetPhotos(Array.from(files));
+    setAssetPhotoUrls(Array.from(files).map(file => URL.createObjectURL(file)));
+  };
+
+  // Handle legal document upload
+  const handleLegalDocsUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setLegalDocs(Array.from(files));
+  };
+
   
 } 
