@@ -2,6 +2,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
+import NavigationBar from "../components/NavigationBar";
 
 // Import Press Start 2P font
 import { Press_Start_2P } from "next/font/google";
@@ -12,28 +13,154 @@ const pressStart2P = Press_Start_2P({
   variable: "--font-press-start",
 });
 
+// Stable random function that generates the same values on server and client
+const generateStableRandom = (seed: number): number => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
 export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState("");
-
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [networkName, setNetworkName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  // Client-side random values
+  const [clientSideRendered, setClientSideRendered] = useState(false);
+  
   useEffect(() => {
     setIsLoaded(true);
+    setClientSideRendered(true);
+    
+    // Check if wallet is already connected
+    if (typeof window !== 'undefined' && window.ethereum) {
+      // Use type assertion to tell TypeScript that ethereum exists
+      const ethereum = window.ethereum as NonNullable<typeof window.ethereum>;
+      ethereum.request({ method: "eth_accounts" })
+        .then((accounts: string[]) => {
+          if (accounts.length > 0) {
+            setWalletAddress(accounts[0]);
+            setWalletConnected(true);
+            
+            // Get network info
+            ethereum.request({ method: "eth_chainId" })
+              .then(updateNetworkName);
+          }
+        })
+        .catch(console.error);
+    }
   }, []);
 
-  // Simulate wallet connection
-  const connectWallet = () => {
-    if (walletConnected) {
+  // Update network name based on chainId
+  const updateNetworkName = (chainId: string | undefined) => {
+    if (!chainId) return;
+    
+    const networks: Record<string, string> = {
+      "0x1": "Ethereum Mainnet",
+      "0x5": "Goerli Testnet",
+      "0x89": "Polygon",
+      "0x13881": "Mumbai Testnet",
+      "0x1388d1": "HashKey Chain Testnet"
+    };
+    
+    const name = networks[chainId] || `Chain ID: ${parseInt(chainId, 16)}`;
+    setNetworkName(name);
+  };
+
+  // Handle accounts changed event
+  const handleAccountsChanged = (accounts: string[]) => {
+    if (accounts.length === 0) {
+      // User disconnected their wallet
       setWalletConnected(false);
       setWalletAddress("");
-      return;
+      setWalletError("Wallet disconnected.");
+    } else {
+      // Update with the new account
+      setWalletAddress(accounts[0]);
+      setWalletConnected(true);
+      setWalletError(null);
     }
-    
-    // Mock wallet connection
-    const mockAddress = "0x" + Math.random().toString(16).substring(2, 14) + "...";
-    setWalletAddress(mockAddress);
-    setWalletConnected(true);
   };
+
+  // Handle chain changed event
+  const handleChainChanged = (chainId: string) => {
+    updateNetworkName(chainId);
+    // Refresh the page on chain change as recommended by MetaMask
+    window.location.reload();
+  };
+
+  // Handle disconnect event
+  const handleDisconnect = (error: { code: number; message: string }) => {
+    console.log("Wallet disconnected:", error);
+    setWalletConnected(false);
+    setWalletAddress("");
+  };
+
+  // Real wallet connection implementation
+  const connectWallet = async () => {
+    try {
+      if (!window.ethereum) {
+        setWalletError("No Ethereum wallet detected. Please install MetaMask.");
+        return;
+      }
+      
+      // Reset wallet error
+      setWalletError(null);
+      
+      // If already connected, disconnect by resetting state
+      if (walletConnected) {
+        setWalletConnected(false);
+        setWalletAddress("");
+        return;
+      }
+      
+      // Request account access
+      console.log("Requesting wallet accounts...");
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      console.log("Accounts received:", accounts);
+      
+      if (accounts.length === 0) {
+        setWalletError("No accounts found. Please create an account in your wallet.");
+        return;
+      }
+      
+      const address = accounts[0];
+      console.log("Connected to wallet address:", address);
+      setWalletAddress(address);
+      setWalletConnected(true);
+      
+      // Get and update network information
+      const chainId = await window.ethereum.request({ method: "eth_chainId" });
+      updateNetworkName(chainId);
+      
+      // Subscribe to accounts change
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      
+      // Subscribe to chainId change
+      window.ethereum.on("chainChanged", handleChainChanged);
+      
+      // Subscribe to disconnect
+      window.ethereum.on("disconnect", handleDisconnect);
+    } catch (error: any) {
+      console.error("Error connecting wallet:", error);
+      // Handle specific MetaMask errors
+      if (error.code === 4001) {
+        // User rejected the request
+        setWalletError("Connection rejected. Please approve the connection request.");
+      } else {
+        setWalletError(`Failed to connect wallet: ${error.message || "Unknown error"}`);
+      }
+    }
+  };
+
+  // Precompute particle positions
+  const particles = Array.from({ length: 20 }).map((_, i) => ({
+    top: `${generateStableRandom(i * 1) * 100}%`,
+    left: `${generateStableRandom(i * 2) * 100}%`,
+    delay: `${generateStableRandom(i * 3) * 5}s`,
+    duration: `${3 + generateStableRandom(i * 4) * 7}s`
+  }));
 
   return (
     <div className={`${pressStart2P.variable} min-h-screen relative overflow-hidden`}>
@@ -57,15 +184,15 @@ export default function Home() {
 
       {/* Yellow particles animation */}
       <div className="absolute inset-0 z-10 pointer-events-none">
-        {Array.from({ length: 20 }).map((_, i) => (
+        {particles.map((particle, i) => (
           <div 
             key={i}
             className="absolute w-1 h-1 bg-[#FFC107] rounded-full animate-pulse"
             style={{
-              top: `${Math.random() * 100}%`,
-              left: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 7}s`
+              top: particle.top,
+              left: particle.left,
+              animationDelay: particle.delay,
+              animationDuration: particle.duration
             }}
           />
         ))}
@@ -73,30 +200,7 @@ export default function Home() {
 
       {/* Main content */}
       <div className="relative z-20 w-full h-full min-h-screen">
-        <header className="container mx-auto flex justify-between items-center pt-6 px-4">
-          <Link href="/" className="flex items-center cursor-pointer">
-            <div className="bg-black/30 backdrop-blur-sm p-2 rounded">
-              <Image 
-                src="/images/pixel-logo.svg" 
-                alt="RWA DeFi Logo" 
-                width={45} 
-                height={45}
-                priority
-              />
-            </div>
-            <h1 className="ml-4 text-xl font-bold text-white">RWA<span className="text-[#FFD54F]">DeFi</span></h1>
-          </Link>
-          <nav className="hidden md:flex gap-6">
-            <Link href="/listing" className="pixel-btn bg-transparent backdrop-blur-sm border-[#6200EA] border-2 py-2 px-3 text-xs text-white hover:bg-[#6200EA]/50 transition-colors">Listing</Link>
-            <Link href="/derivative" className="pixel-btn bg-transparent backdrop-blur-sm border-[#4CAF50] border-2 py-2 px-3 text-xs text-white hover:bg-[#4CAF50]/50 transition-colors">Derivative</Link>
-          </nav>
-          <button 
-            onClick={connectWallet} 
-            className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white"
-          >
-            {walletConnected ? walletAddress : "Connect Wallet"}
-          </button>
-        </header>
+        <NavigationBar />
 
         <main className="container mx-auto flex items-center px-4" style={{ minHeight: "calc(100vh - 100px)" }}>
           <div className={`w-full md:w-1/2 backdrop-blur-sm bg-black/30 p-6 rounded-lg ${isLoaded ? 'pixel-animation' : 'opacity-0'}`} style={{ animationDelay: '0.3s' }}>
@@ -107,9 +211,25 @@ export default function Home() {
               List properties, create derivatives, borrow against your assets, and build your digital real estate portfolio.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="pixel-btn bg-[#6200EA] text-xs py-3 px-6 text-white">Launch App</button>
+              <Link href="/listing">
+                <button className="pixel-btn bg-[#6200EA] text-xs py-3 px-6 text-white">Launch App</button>
+              </Link>
               <button className="pixel-btn bg-transparent border-white border-2 text-xs py-3 px-6 text-white hover:bg-white/10">Learn More</button>
             </div>
+            
+            {/* Wallet error message */}
+            {walletError && (
+              <div className="mt-4 px-4 py-3 bg-red-500/20 border border-red-500 rounded-lg">
+                <p className="text-xs text-white">{walletError}</p>
+              </div>
+            )}
+            
+            {/* Network information */}
+            {walletConnected && networkName && (
+              <div className="mt-4 px-4 py-3 bg-purple-500/20 border border-purple-500 rounded-lg">
+                <p className="text-xs text-white">Connected to: {networkName}</p>
+              </div>
+            )}
           </div>
         </main>
 

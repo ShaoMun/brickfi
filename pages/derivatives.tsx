@@ -3,6 +3,7 @@ import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
 import { Press_Start_2P } from "next/font/google";
+import NavigationBar from "../components/NavigationBar";
 
 const pressStart2P = Press_Start_2P({
   weight: "400",
@@ -70,11 +71,19 @@ const initialPositions = [
   }
 ];
 
+// Add this stable random function near the top of the file after imports
+const generateStableRandom = (seed: number): number => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
 export default function Derivative() {
   // States
-  const [isLoaded, setIsLoaded] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
+  const [networkName, setNetworkName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(rwaOptions[0]);
   const [positions, setPositions] = useState(initialPositions);
   
@@ -90,6 +99,14 @@ export default function Derivative() {
   const [estimatedPremium, setEstimatedPremium] = useState(0);
   const [activePage, setActivePage] = useState("trade"); // trade, positions, history
   
+  // Precompute particle positions with stable seeds
+  const particles = Array.from({ length: 15 }).map((_, i) => ({
+    top: `${generateStableRandom(i * 1) * 100}%`,
+    left: `${generateStableRandom(i * 2) * 100}%`,
+    delay: `${generateStableRandom(i * 3) * 5}s`,
+    duration: `${3 + generateStableRandom(i * 4) * 7}s`
+  }));
+
   useEffect(() => {
     setIsLoaded(true);
     
@@ -99,18 +116,52 @@ export default function Derivative() {
     }
   }, [strikePrice, optionExpiry, optionAmount, optionType, direction, selectedAsset]);
   
-  // Connect wallet functionality
-  const connectWallet = () => {
-    if (walletConnected) {
-      setWalletConnected(false);
-      setWalletAddress("");
-      return;
+  // Connect wallet function
+  const connectWallet = async (): Promise<void> => {
+    setIsLoading(true);
+    try {
+      if (typeof window !== 'undefined' && window.ethereum) {
+        // Request account access
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        
+        if (accounts.length > 0) {
+          const address = accounts[0];
+          setWalletAddress(address);
+          setWalletConnected(true);
+          
+          // Get chain ID
+          const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+          updateNetworkName(chainIdHex);
+        }
+      } else {
+        console.error("No ethereum wallet found");
+      }
+    } catch (error) {
+      console.error("Failed to connect wallet:", error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Mock wallet connection
-    const mockAddress = "0x" + Math.random().toString(16).substring(2, 14) + "...";
-    setWalletAddress(mockAddress);
-    setWalletConnected(true);
+  };
+  
+  const updateNetworkName = (chainId: string) => {
+    let network;
+    switch (chainId) {
+      case '0x1':
+        network = 'Ethereum Mainnet';
+        break;
+      case '0x5':
+        network = 'Goerli Testnet';
+        break;
+      case '0x11':
+        network = 'HashKey Chain Testnet';
+        break;
+      case '0x12':
+        network = 'HashKey Chain Mainnet';
+        break;
+      default:
+        network = 'Unknown Network';
+    }
+    setNetworkName(network);
   };
   
   // Calculate option premium (simplified for demo)
@@ -202,15 +253,15 @@ export default function Derivative() {
 
       {/* Yellow particles animation */}
       <div className="absolute inset-0 z-10 pointer-events-none">
-        {Array.from({ length: 15 }).map((_, i) => (
+        {particles.map((particle, i) => (
           <div 
             key={i}
             className="absolute w-1 h-1 bg-[#FFC107] rounded-full animate-pulse"
             style={{
-              top: `${Math.random() * 100}%`,
-              left: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 7}s`
+              top: particle.top,
+              left: particle.left,
+              animationDelay: particle.delay,
+              animationDuration: particle.duration
             }}
           />
         ))}
@@ -219,30 +270,14 @@ export default function Derivative() {
       {/* Main content */}
       <div className="relative z-20 w-full h-full min-h-screen">
         {/* Header */}
-        <header className="container mx-auto flex justify-between items-center pt-6 px-4">
-          <Link href="/" className="flex items-center cursor-pointer">
-            <div className="bg-black/30 backdrop-blur-sm p-2 rounded">
-              <Image 
-                src="/images/pixel-logo.svg" 
-                alt="RWA DeFi Logo" 
-                width={45} 
-                height={45}
-                priority
-              />
-            </div>
-            <h1 className="ml-4 text-xl font-bold text-white">RWA<span className="text-[#FFD54F]">DeFi</span></h1>
-          </Link>
-          <nav className="hidden md:flex gap-6">
-            <Link href="/listing" className="pixel-btn bg-transparent backdrop-blur-sm border-[#6200EA] border-2 py-2 px-3 text-xs text-white hover:bg-[#6200EA]/50 transition-colors">Listing</Link>
-            <Link href="/derivative" className="pixel-btn bg-transparent backdrop-blur-sm border-[#4CAF50] border-2 py-2 px-3 text-xs text-white hover:bg-[#4CAF50]/50 transition-colors">Derivative</Link>
-          </nav>
-          <button 
-            onClick={connectWallet} 
-            className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white"
-          >
-            {walletConnected ? walletAddress : "Connect Wallet"}
-          </button>
-        </header>
+        <NavigationBar 
+          walletConnected={walletConnected}
+          walletAddress={walletAddress}
+          getNetworkName={() => networkName || ''}
+          formatAddress={(address) => address.substring(0, 6) + "..." + address.substring(address.length - 4)}
+          connectWallet={connectWallet}
+          isLoading={isLoading}
+        />
 
         {/* Main Content */}
         <main className="container mx-auto py-8 px-4">
