@@ -166,26 +166,28 @@ export class KYCService {
       const messageHashBytes = ethers.utils.arrayify(messageHash);
       const signature = await this.signer!.signMessage(messageHashBytes);
       
-      // Instead of executing the transaction, we'll prepare and return the data
-      // This allows the UI to handle the transaction via MetaMask directly
-      console.log('Preparing KYC verification data...');
-
-      // Prepare transaction data
-      const data = {
+      // Submit to the blockchain - use the current wallet address explicitly
+      console.log('Calling verifyKYC on contract...');
+      const tx = await this.contract!.verifyKYC(
         dataHash,
         ageNumber,
-        isUSCitizen: userData.isUSCitizen,
+        userData.isUSCitizen,
         signature,
-        walletAddress
-      };
+        walletAddress // Make sure we're using the current wallet address
+      );
       
-      // Simulate KYC verification success but avoid gas estimation errors
-      console.log('KYC verification data prepared successfully');
+      // Wait for transaction to be mined
+      console.log('Waiting for transaction to be mined...');
+      const receipt = await tx.wait();
+      console.log('Transaction mined, receipt:', receipt);
       
-      // Return success without actually executing the transaction
+      // Double-check that the KYC status was updated correctly
+      const kycStatus = await this.hasPassedKYC(walletAddress);
+      console.log('KYC status after verification:', kycStatus);
+      
       return {
         success: true,
-        txHash: "Transaction handling moved to frontend to avoid gas estimation errors"
+        txHash: receipt.transactionHash
       };
     } catch (error: any) {
       console.error('KYC verification error:', error);
