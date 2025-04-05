@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postcompile": "cp artifacts/contracts/KYCVerifier.sol/KYCVerifier.json contracts/abis/"
+    "postcompile": "cp artifacts/contracts/KYCVerifier.sol/KYCVerifier.json contracts/abis/",
+    "deploy:sbt": "npx hardhat run scripts/deploy-verification-sbt.js --network hashkeyTestnet",
+    "deploy:sbt:local": "npx hardhat run scripts/deploy-verification-sbt.js --network localhost",
+    "postdeploy:sbt": "cp artifacts/contracts/VerificationSBT.sol/VerificationSBT.json contracts/abis/",
+    "update:sbt-address": "node scripts/update-sbt-address.js"
   },
   "dependencies": {
     "next": "15.2.4",

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import axios from 'axios';
-import cheerio from 'cheerio';
 
 // In production, import the actual scraper and contract ABI
 // import ZillowScraper, { PropertyData } from '../utils/zillowScraper';

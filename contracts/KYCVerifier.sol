@@ -4,6 +4,7 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "./VerificationSBT.sol";
 
 /**
  * @title KYCVerifier
@@ -22,12 +23,18 @@ contract KYCVerifier is Ownable, ReentrancyGuard {
     // Trusted verifiers who can sign KYC data
     mapping(address => bool) private trustedVerifiers;
     
+    // SBT contract for verification tokens
+    VerificationSBT public verificationSBT;
+    bool public sbtMintingEnabled = false;
+    
     // KYC verification event
     event KYCVerified(address indexed user, bool approved, uint256 timestamp);
+    event SBTMinted(address indexed user, uint256 tokenId);
     
     // Verifier management events
     event VerifierAdded(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
+    event SBTContractUpdated(address indexed sbtContract);
     
     // Execution errors
     error InvalidSignature();
@@ -41,6 +48,23 @@ contract KYCVerifier is Ownable, ReentrancyGuard {
     constructor() {
         trustedVerifiers[msg.sender] = true;
         emit VerifierAdded(msg.sender);
+    }
+    
+    /**
+     * @dev Set the SBT contract address
+     * @param sbtAddress Address of the VerificationSBT contract
+     */
+    function setSBTContract(address sbtAddress) external onlyOwner {
+        verificationSBT = VerificationSBT(sbtAddress);
+        emit SBTContractUpdated(sbtAddress);
+    }
+    
+    /**
+     * @dev Enable or disable SBT minting
+     * @param enabled Whether SBT minting should be enabled
+     */
+    function setSBTMintingEnabled(bool enabled) external onlyOwner {
+        sbtMintingEnabled = enabled;
     }
     
     /**
@@ -113,6 +137,11 @@ contract KYCVerifier is Ownable, ReentrancyGuard {
         
         // Emit event
         emit KYCVerified(msg.sender, approved, block.timestamp);
+        
+        // If approved and SBT minting is enabled, mint verification token
+        if (approved && sbtMintingEnabled && address(verificationSBT) != address(0)) {
+            _mintVerificationSBT(msg.sender, dataHash);
+        }
     }
     
     /**
@@ -120,8 +149,9 @@ contract KYCVerifier is Ownable, ReentrancyGuard {
      * This is useful for special cases or manual verification
      * @param user Address of the user to set KYC status for
      * @param approved Whether the user is approved
+     * @param dataHash Optional hash of the KYC data for SBT minting
      */
-    function setKYCStatus(address user, bool approved) external nonReentrant {
+    function setKYCStatus(address user, bool approved, bytes32 dataHash) external nonReentrant {
         // Only trusted verifiers can call this function
         if (!trustedVerifiers[msg.sender]) {
             revert VerifierNotTrusted();
@@ -133,6 +163,99 @@ contract KYCVerifier is Ownable, ReentrancyGuard {
         
         // Emit event
         emit KYCVerified(user, approved, block.timestamp);
+        
+        // If approved and SBT minting is enabled, mint verification token
+        if (approved && sbtMintingEnabled && address(verificationSBT) != address(0)) {
+            _mintVerificationSBT(user, dataHash);
+        }
+    }
+    
+    /**
+     * @dev Internal function to mint verification SBT
+     * @param user Address of the user to mint for
+     * @param dataHash Hash of the KYC data
+     */
+    function _mintVerificationSBT(address user, bytes32 dataHash) internal {
+        // Generate token metadata URI (JSON string with verification info)
+        string memory tokenURI = _generateTokenURI(user, dataHash);
+        
+        // Check if user already has a token
+        if (!verificationSBT.hasVerificationToken(user)) {
+            // Mint the token
+            uint256 tokenId = verificationSBT.mintVerificationToken(user, dataHash, tokenURI);
+            emit SBTMinted(user, tokenId);
+        }
+    }
+    
+    /**
+     * @dev Internal function to generate token URI
+     * @param user Address of the user
+     * @param dataHash Hash of the KYC data
+     * @return string JSON metadata as a string
+     */
+    function _generateTokenURI(address user, bytes32 dataHash) internal view returns (string memory) {
+        // Convert verification timestamp to string
+        string memory timestampStr = _uintToString(verificationTimestamp[user]);
+        
+        // Convert data hash to hex string (without 0x prefix)
+        string memory dataHashStr = _bytes32ToHexString(dataHash);
+        
+        // Return formatted JSON string
+        return string(
+            abi.encodePacked(
+                '{"name":"KYC Verification Token","description":"This token certifies that the holder has completed KYC verification.",',
+                '"attributes":[',
+                '{"trait_type":"Status","value":"Verified"},',
+                '{"trait_type":"Verification Timestamp","value":"', timestampStr, '"},',
+                '{"trait_type":"KYC Hash","value":"', dataHashStr, '"}',
+                ']}'
+            )
+        );
+    }
+    
+    /**
+     * @dev Convert uint to string
+     * @param value Uint value to convert
+     * @return string String representation
+     */
+    function _uintToString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        
+        uint256 temp = value;
+        uint256 digits;
+        
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        
+        return string(buffer);
+    }
+    
+    /**
+     * @dev Convert bytes32 to hex string
+     * @param data Bytes32 data to convert
+     * @return string Hex string representation (without 0x prefix)
+     */
+    function _bytes32ToHexString(bytes32 data) internal pure returns (string memory) {
+        bytes memory hexChars = "0123456789abcdef";
+        bytes memory result = new bytes(64); // 32 bytes * 2 hex chars
+        
+        for (uint8 i = 0; i < 32; i++) {
+            result[i*2] = hexChars[uint8(data[i] >> 4)];
+            result[i*2+1] = hexChars[uint8(data[i] & 0x0f)];
+        }
+        
+        return string(result);
     }
     
     /**
