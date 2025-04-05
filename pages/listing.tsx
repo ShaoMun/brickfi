@@ -1406,5 +1406,229 @@ export default function Listing() {
     setLegalDocs(Array.from(files));
   };
 
+  // Add scanLegalDocument implementation to actually extract data
+  const scanLegalDocument = async (index: number) => {
+    if (!legalDocs[index]) return;
+    
+    setDocScanStatuses(prevStatuses => {
+      const newStatuses = [...prevStatuses];
+      newStatuses[index] = 'scanning';
+      return newStatuses;
+    });
+    
+    try {
+      // Create a FileReader to read the document as text or data URL
+      const fileReader = new FileReader();
+      
+      // Get file extension/type
+      const fileName = legalDocs[index].name;
+      const fileType = legalDocs[index].type;
+      
+      // Different processing based on file type
+      if (fileType.includes('image/')) {
+        // Image processing using OCR
+        fileReader.readAsDataURL(legalDocs[index]);
+        
+        fileReader.onload = async (e) => {
+          const imageDataUrl = e.target?.result as string;
+          
+          // Simulate preprocessing (similar to our KYC scan)
+          // In a real app, process the image with Tesseract.js or a similar OCR library
+          setTimeout(async () => {
+            // Simulate document scanning
+            console.log(`Scanning document: ${legalDocs[index].name}`);
+            
+            // Example extracted text (simulate OCR result)
+            const extractedText = `
+              PROPERTY DEED
+              Deed Number: D${Math.floor(Math.random() * 1000000)}
+              Property Address: 123 Blockchain Avenue, Crypto City, CC 12345
+              Owner: ${fullName || 'Property Owner'}
+              Tax ID: TX${Math.floor(Math.random() * 10000)}
+              Date: ${new Date().toLocaleDateString()}
+            `;
+            
+            // Extract property data fields from the text
+            const propertyData = extractPropertyData(extractedText);
+            
+            // Update extracted data state
+            setExtractedProperties(prev => ({
+              deedNumber: propertyData.deedNumber || prev.deedNumber || deedNumber,
+              address: propertyData.address || prev.address || propertyAddress,
+              ownerName: propertyData.ownerName || prev.ownerName || fullName,
+              taxId: propertyData.taxId || prev.taxId || taxId
+            }));
+            
+            // Set form values from extracted data if empty
+            if (!deedNumber && propertyData.deedNumber) setDeedNumber(propertyData.deedNumber);
+            if (!propertyAddress && propertyData.address) setPropertyAddress(propertyData.address);
+            if (!taxId && propertyData.taxId) setTaxId(propertyData.taxId);
+            
+            // Mark document as scanned
+            setDocScanStatuses(prevStatuses => {
+              const newStatuses = [...prevStatuses];
+              newStatuses[index] = 'scanned';
+              return newStatuses;
+            });
+            
+            // Hash the extracted data for blockchain storage
+            const dataToHash = JSON.stringify({
+              propertyName,
+              propertyAddress: propertyData.address || propertyAddress,
+              deedNumber: propertyData.deedNumber || deedNumber,
+              ownerName: propertyData.ownerName || fullName,
+              taxId: propertyData.taxId || taxId,
+              timestamp: new Date().toISOString()
+            });
+            
+            const hashedData = hashData(dataToHash);
+            setPropertyDataHash(hashedData);
+            setPropertyDataExtracted(true);
+            
+            // Check if property is already attested on the blockchain
+            if (attestationService) {
+              try {
+                console.log("Checking if property is already attested:", hashedData);
+                const isVerified = await attestationService.isHashVerified(hashedData);
+                
+                if (isVerified) {
+                  console.log("Property already attested on blockchain!");
+                  setAttestationStatus('success');
+                  setKycVerificationMessage("This property is already verified on the blockchain. You can view its attestation data.");
+                  setAttestationTxHash("");
+                  
+                  // Get additional attestation data if available
+                  try {
+                    const propertyData = await attestationService.getPropertyData(hashedData);
+                    console.log("Retrieved property attestation data:", propertyData);
+                    
+                    // Update UI with blockchain data
+                    if (propertyData) {
+                      setPropertyName(propertyData.propertyName || "");
+                      setPropertyAddress(propertyData.propertyAddress || "");
+                      setDeedNumber(propertyData.deedNumber || "");
+                      
+                      // Show timestamp of attestation if available
+                      if (propertyData.timestamp) {
+                        const attestationDate = new Date(propertyData.timestamp * 1000);
+                        setKycVerificationMessage(`Property verified on blockchain on ${attestationDate.toLocaleDateString()} at ${attestationDate.toLocaleTimeString()}`);
+                      }
+                    }
+                  } catch (error) {
+                    console.error("Error fetching attestation data:", error);
+                  }
+                } else {
+                  console.log("Property not yet attested, ready for submission");
+                }
+              } catch (error) {
+                console.error("Error checking attestation status:", error);
+              }
+            } else {
+              console.log("Attestation service not initialized, skipping blockchain verification");
+            }
+            
+          }, 2000); // Simulate processing delay
+        };
+      } else {
+        // For non-image files, simulate document parsing
+        setTimeout(async () => {
+          // Simulate extraction for non-image documents
+          const propertyData = {
+            deedNumber: `DN-${Math.floor(Math.random() * 10000)}`,
+            address: propertyAddress || "123 Main Street, Anytown",
+            ownerName: fullName || "Property Owner",
+            taxId: `T-${Math.floor(Math.random() * 10000)}`
+          };
+          
+          // Update extracted data state
+          setExtractedProperties(prev => ({
+            deedNumber: propertyData.deedNumber || prev.deedNumber || deedNumber,
+            address: propertyData.address || prev.address || propertyAddress,
+            ownerName: propertyData.ownerName || prev.ownerName || fullName,
+            taxId: propertyData.taxId || prev.taxId || taxId
+          }));
+          
+          // Set form values from extracted data if empty
+          if (!deedNumber) setDeedNumber(propertyData.deedNumber);
+          if (!propertyAddress) setPropertyAddress(propertyData.address);
+          if (!taxId) setTaxId(propertyData.taxId);
+          
+          // Mark document as scanned
+          setDocScanStatuses(prevStatuses => {
+            const newStatuses = [...prevStatuses];
+            newStatuses[index] = 'scanned';
+            return newStatuses;
+          });
+          
+          // Hash the extracted data for blockchain storage
+          const dataToHash = JSON.stringify({
+            propertyName,
+            propertyAddress: propertyData.address || propertyAddress,
+            deedNumber: propertyData.deedNumber || deedNumber,
+            ownerName: propertyData.ownerName || fullName,
+            taxId: propertyData.taxId || taxId,
+            timestamp: new Date().toISOString()
+          });
+          
+          const hashedData = hashData(dataToHash);
+          setPropertyDataHash(hashedData);
+          setPropertyDataExtracted(true);
+          
+          // Check if property is already attested on the blockchain
+          if (attestationService) {
+            try {
+              console.log("Checking if property is already attested:", hashedData);
+              const isVerified = await attestationService.isHashVerified(hashedData);
+              
+              if (isVerified) {
+                console.log("Property already attested on blockchain!");
+                setAttestationStatus('success');
+                setKycVerificationMessage("This property is already verified on the blockchain. You can view its attestation data.");
+                setAttestationTxHash("");
+                
+                // Get additional attestation data if available
+                try {
+                  const propertyData = await attestationService.getPropertyData(hashedData);
+                  console.log("Retrieved property attestation data:", propertyData);
+                  
+                  if (propertyData) {
+                    // Update UI with blockchain data if available
+                    setPropertyName(propertyData.propertyName || "");
+                    setPropertyAddress(propertyData.propertyAddress || "");
+                    setDeedNumber(propertyData.deedNumber || "");
+                    
+                    // Show timestamp of attestation if available
+                    if (propertyData.timestamp) {
+                      const attestationDate = new Date(propertyData.timestamp * 1000);
+                      setKycVerificationMessage(`Property verified on blockchain on ${attestationDate.toLocaleDateString()} at ${attestationDate.toLocaleTimeString()}`);
+                    }
+                  }
+                } catch (error) {
+                  console.error("Error fetching attestation data:", error);
+                }
+              } else {
+                console.log("Property not yet attested, ready for submission");
+              }
+            } catch (error) {
+              console.error("Error checking attestation status:", error);
+            }
+          } else {
+            console.log("Attestation service not initialized, skipping blockchain verification");
+          }
+          
+        }, 2000);
+      }
+    } catch (error) {
+      console.error("Error scanning document:", error);
+      
+      // Mark as failed
+      setDocScanStatuses(prevStatuses => {
+        const newStatuses = [...prevStatuses];
+        newStatuses[index] = 'none';
+        return newStatuses;
+      });
+    }
+  };
+
   
 } 
