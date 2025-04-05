@@ -1,40 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# ERC3643 Security Token Factory
 
-## Getting Started
+This project contains a SecurityTokenFactory contract for creating ERC3643-compliant security tokens on the Polygon Amoy testnet.
 
-First, run the development server:
+## Prerequisites
 
+- Node.js (v14+)
+- npm or yarn
+- An account with MATIC on Polygon Amoy testnet
+
+## Setup
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone [your-repo-url]
+cd [repo-name]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+3. Create a `.env` file:
+```bash
+cp .env.example .env
+```
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+4. Fill in your environment variables in `.env`:
+   - `PRIVATE_KEY`: Your private key (without 0x prefix)
+   - `POLYGON_AMOY_RPC_URL`: Polygon Amoy RPC URL (default should work)
+   - `POLYGONSCAN_API_KEY`: Your Polygonscan API key (optional, for verification)
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+## Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Compile the contracts:
+```bash
+npx hardhat compile
+```
 
-## Learn More
+2. Deploy to Polygon Amoy testnet:
+```bash
+npx hardhat run scripts/deploy-token-factory.js --network amoy
+```
 
-To learn more about Next.js, take a look at the following resources:
+3. The deployment script will output:
+   - The address of the deployed contract
+   - A verification command
+   - The deployment information is saved to `deployments/polygon-amoy-deployment.json`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+## Contract Verification
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Verify your contract on Polygonscan:
 
-## Deploy on Vercel
+```bash
+npx hardhat verify --network amoy [CONTRACT_ADDRESS]
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Updating the Frontend
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+After deployment, update the token factory address in your frontend code:
+
+1. Open `pages/listing.tsx`
+2. Find the line with `const tokenFactoryAddress = "0x0000000000000000000000000000000000000000";`
+3. Replace it with the actual deployed contract address
+
+## Usage
+
+The SecurityTokenFactory contract allows you to:
+
+1. Create new Security Tokens with the required compliance features
+2. Track created tokens
+3. Retrieve information about deployed tokens
+
+## License
+
+MIT

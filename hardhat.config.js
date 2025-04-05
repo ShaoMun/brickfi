@@ -5,7 +5,16 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x000000000000000000000000000000
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: "0.8.17",
+  solidity: {
+    version: "0.8.19",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      },
+      viaIR: true
+    }
+  },
   paths: {
     artifacts: './artifacts',
     cache: './cache',
@@ -29,18 +38,16 @@ module.exports = {
       accounts: [PRIVATE_KEY],
       gasPrice: 20000000000 // 20 gwei
     },
-    polygon_amoy: {
-      url: "https://rpc-amoy.polygon.technology/",
-      chainId: 80002,
-      accounts: [PRIVATE_KEY],
-      gasPrice: 35000000000, // 35 gwei
-      maxPriorityFeePerGas: 25000000000 // 25 gwei
+    amoy: {
+      url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 80002
     }
   },
   etherscan: {
     apiKey: {
       hashkeyTestnet: "", // No API key needed
-      polygon_amoy: process.env.POLYGONSCAN_API_KEY || "" // Optional: add your Polygonscan API key if available
+      polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
     },
     customChains: [
       {
@@ -52,10 +59,10 @@ module.exports = {
         }
       },
       {
-        network: "polygon_amoy",
+        network: "amoy",
         chainId: 80002,
         urls: {
-          apiURL: "https://api-testnet.polygonscan.com/api",
+          apiURL: "https://api-amoy.polygonscan.com/api",
           browserURL: "https://amoy.polygonscan.com/"
         }
       }

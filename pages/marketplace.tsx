@@ -2,35 +2,55 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import Head from 'next/head';
 import Link from 'next/link';
-import { createAttestationService } from '../utils/attestationService';
-import { createKYCService } from '../utils/kycService';
+import Image from 'next/image';
 import NavigationBar from '../components/NavigationBar';
+import { useRouter } from 'next/router';
 
-// Define Property interface
-interface Property {
-  propertyName: string;
-  propertyAddress: string;
-  deedNumber: string;
-  ownerName?: string;
-  taxId?: string;
-  photoHashes: string[];
-  timestamp: number;
-  propertyIndex: number;
-  verified: boolean;
+// Define Security Token interface
+interface SecurityToken {
+  id: string;
+  address: string;
+  name: string;
+  symbol: string;
+  totalSupply: string;
+  documentURI: string;
+  industry: string;
+  assetType: string;
+  tokenValue: string;
+  offeringSize: string;
+  dividendFrequency: string;
+  maturityDate: string;
+  creator: string;
+  createdAt: number;
 }
 
 export default function Marketplace() {
+  const router = useRouter();
+  
   // State variables
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
-  const [chainId, setChainId] = useState('');
-  const [attestationService, setAttestationService] = useState<any>(null);
-  const [kycService, setKycService] = useState<any>(null);
-  const [kycCompleted, setKycCompleted] = useState(false);
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [chainId, setChainId] = useState<number | null>(null);
+  const [tokens, setTokens] = useState<SecurityToken[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
+  const [provider, setProvider] = useState<ethers.Provider | null>(null);
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   
+  // Constants
+  const POLYGON_AMOY_CHAIN_ID = 80002;
+  const FACTORY_ADDRESS = "0xDC78dfFa733c818d8fee81ec410BA32c9c249016";
+  const FACTORY_ABI = [
+    "function getTokenCount() external view returns (uint256)",
+    "function getAllTokens() external view returns (address[])",
+    "function getTokenById(uint256 tokenId) external view returns (address)",
+    "function getTokenData(address tokenAddress) external view returns (tuple(uint256 id, string name, string symbol, uint256 totalSupply, string documentURI, string industry, string assetType, uint256 tokenValue, uint256 offeringSize, string dividendFrequency, string maturityDate, address creator, uint256 createdAt))",
+    "function getTokenAt(uint256 index) external view returns (address)",
+    "event TokenCreated(uint256 indexed id, address indexed tokenAddress, string name, string symbol, uint256 totalSupply, address indexed creator)"
+  ];
+
   // Connect wallet function
   const connectWallet = async () => {
     try {
@@ -48,10 +68,17 @@ export default function Marketplace() {
           
           // Get network ID
           const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
-          setChainId(chainIdHex);
+          const parsedChainId = parseInt(chainIdHex, 16);
+          setChainId(parsedChainId);
           
-          // Initialize services
-          initializeServices();
+          // Initialize provider and signer
+          const web3Provider = new ethers.BrowserProvider(window.ethereum);
+          setProvider(web3Provider);
+          const web3Signer = await web3Provider.getSigner();
+          setSigner(web3Signer);
+          
+          // Initialize contract
+          initializeContract(web3Provider, web3Signer);
         }
       } else {
         setErrorMessage('Ethereum wallet not detected. Please install MetaMask.');
@@ -64,131 +91,210 @@ export default function Marketplace() {
     }
   };
   
-  // Initialize attestation and KYC services
-  const initializeServices = async () => {
+  // Initialize contract
+  const initializeContract = async (
+    provider: ethers.Provider,
+    signer: ethers.Signer
+  ) => {
     try {
-      // Initialize attestation service
-      const attService = await createAttestationService();
-      if (attService) {
-        setAttestationService(attService);
-        console.log('Attestation service initialized');
-      }
+      const contract = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, signer);
+      setFactoryContract(contract);
       
-      // Initialize KYC service
-      const kyc = await createKYCService();
-      if (kyc) {
-        setKycService(kyc);
-        console.log('KYC service initialized');
-        
-        // Check KYC status
-        if (walletAddress) {
-          try {
-            console.log('Checking KYC status for address:', walletAddress);
-            const hasPassedKYC = await kyc.hasPassedKYC(walletAddress);
-            console.log('KYC verification status:', hasPassedKYC);
-            setKycCompleted(hasPassedKYC);
-            
-            if (hasPassedKYC) {
-              // Get verification timestamp
-              const timestamp = await kyc.getVerificationTimestamp(walletAddress);
-              if (timestamp > 0) {
-                const date = new Date(timestamp * 1000);
-                console.log(`KYC verified on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`);
-              }
-            }
-          } catch (error) {
-            console.error('Error checking KYC status:', error);
-          }
-        }
-      }
+      // Fetch tokens after initializing contract
+      await fetchTokens(contract);
     } catch (error) {
-      console.error('Service initialization error:', error);
+      console.error('Contract initialization error:', error);
+      setErrorMessage('Failed to initialize contract');
     }
   };
   
-  // Fetch properties when services are ready
-  useEffect(() => {
-    const fetchProperties = async () => {
-      if (attestationService && walletConnected && walletAddress) {
-        setIsLoading(true);
-        try {
-          const props = await attestationService.getProperties(walletAddress);
-          setProperties(props || []);
-        } catch (error) {
-          console.error('Error fetching properties:', error);
-          setErrorMessage('Failed to fetch property data');
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
+  // Switch to Polygon Amoy network
+  const switchToPolygonAmoy = async () => {
+    if (!window.ethereum) return;
     
-    fetchProperties();
-  }, [attestationService, walletConnected, walletAddress]);
+    try {
+      // First try to switch to the network
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}` }],
+      });
+    } catch (switchError: any) {
+      // This error code indicates that the chain has not been added to MetaMask
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}`,
+                chainName: 'Polygon Amoy Testnet',
+                nativeCurrency: {
+                  name: 'MATIC',
+                  symbol: 'MATIC',
+                  decimals: 18,
+                },
+                rpcUrls: ['https://rpc-amoy.polygon.technology'],
+                blockExplorerUrls: ['https://amoy.polygonscan.com/'],
+              },
+            ],
+          });
+          // Try switching again after adding
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}` }],
+          });
+        } catch (addError) {
+          console.error('Failed to add Polygon Amoy network:', addError);
+          setErrorMessage('Failed to add Polygon Amoy network to your wallet.');
+        }
+      } else {
+        console.error('Failed to switch to Polygon Amoy:', switchError);
+        setErrorMessage('Failed to switch to Polygon Amoy.');
+      }
+    }
+  };
   
-  // Handle wallet events
+  // Fetch tokens from the factory contract
+  const fetchTokens = async (contract = factoryContract) => {
+    if (!contract) return;
+    
+    setIsLoading(true);
+    try {
+      // Get token count
+      const count = await contract.getTokenCount();
+      console.log(`Found ${count.toString()} tokens on the factory`);
+      
+      // Get all token addresses
+      const tokenAddresses = await contract.getAllTokens();
+      console.log('Token addresses:', tokenAddresses);
+      
+      const tokenPromises = tokenAddresses.map(async (address: string) => {
+        // Get token data for each address
+        const data = await contract.getTokenData(address);
+        
+        // Format the data
+        return {
+          id: data.id.toString(),
+          address: address,
+          name: data.name,
+          symbol: data.symbol,
+          totalSupply: ethers.formatEther(data.totalSupply),
+          documentURI: data.documentURI,
+          industry: data.industry,
+          assetType: data.assetType,
+          tokenValue: ethers.formatEther(data.tokenValue),
+          offeringSize: ethers.formatEther(data.offeringSize),
+          dividendFrequency: data.dividendFrequency,
+          maturityDate: data.maturityDate,
+          creator: data.creator,
+          createdAt: data.createdAt.toNumber()
+        };
+      });
+      
+      const tokenData = await Promise.all(tokenPromises);
+      
+      // Sort tokens by creation date (newest first)
+      const sortedTokens = tokenData.sort((a, b) => b.createdAt - a.createdAt);
+      
+      setTokens(sortedTokens);
+    } catch (error) {
+      console.error('Error fetching tokens:', error);
+      setErrorMessage('Failed to fetch token data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle events to detect new tokens
+  useEffect(() => {
+    if (factoryContract) {
+      // Listen for TokenCreated events
+      const tokenCreatedFilter = factoryContract.filters.TokenCreated();
+      
+      const handleTokenCreated = (id: bigint, tokenAddress: string, name: string, symbol: string, totalSupply: bigint, creator: string) => {
+        console.log(`New token created: ${name} (${symbol}) at ${tokenAddress}`);
+        // Refresh tokens list when a new token is created
+        fetchTokens();
+      };
+      
+      // Add event listener
+      factoryContract.on(tokenCreatedFilter, handleTokenCreated);
+      
+      // Cleanup function
+      return () => {
+        factoryContract.off(tokenCreatedFilter, handleTokenCreated);
+      };
+    }
+  }, [factoryContract]);
+  
+  // Check wallet connection on page load
   useEffect(() => {
     if (typeof window !== 'undefined' && window.ethereum) {
-      // Handle account change
+      // Get accounts if already connected
+      window.ethereum.request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
+          if (accounts.length > 0) {
+            setWalletAddress(accounts[0]);
+            setWalletConnected(true);
+            
+            // Get current chain ID
+            window.ethereum.request({ method: 'eth_chainId' })
+              .then(async (chainIdHex: string) => {
+                const parsedChainId = parseInt(chainIdHex, 16);
+                setChainId(parsedChainId);
+                
+                // Initialize provider and signer
+                const web3Provider = new ethers.BrowserProvider(window.ethereum);
+                setProvider(web3Provider);
+                const web3Signer = await web3Provider.getSigner();
+                setSigner(web3Signer);
+                
+                // Initialize contract
+                initializeContract(web3Provider, web3Signer);
+              })
+              .catch(console.error);
+          }
+        })
+        .catch(console.error);
+      
+      // Setup event listeners
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length === 0) {
-          // User disconnected wallet
+          // User disconnected
           setWalletConnected(false);
           setWalletAddress('');
-          setProperties([]);
-          setKycCompleted(false);
+          setTokens([]);
         } else if (accounts[0] !== walletAddress) {
-          // User switched account
-          const newAddress = accounts[0];
-          setWalletAddress(newAddress);
-          // Refresh properties for new account
-          if (attestationService) {
-            attestationService.getProperties(newAddress)
-              .then((props: Property[]) => setProperties(props || []))
-              .catch((error: any) => console.error('Error fetching properties after account change:', error));
-          }
-          
-          // Check KYC status for new account
-          if (kycService) {
-            console.log('Checking KYC status for new address:', newAddress);
-            kycService.hasPassedKYC(newAddress)
-              .then((hasPassedKYC: boolean) => {
-                console.log('KYC verification status for new address:', hasPassedKYC);
-                setKycCompleted(hasPassedKYC);
-                
-                // Get verification timestamp if KYC is completed
-                if (hasPassedKYC) {
-                  kycService.getVerificationTimestamp(newAddress)
-                    .then((timestamp: number) => {
-                      if (timestamp > 0) {
-                        const date = new Date(timestamp * 1000);
-                        console.log(`KYC verified on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`);
-                      }
-                    })
-                    .catch((error: any) => console.error('Error getting KYC timestamp:', error));
-                }
-              })
-              .catch((error: any) => console.error('Error checking KYC status after account change:', error));
+          // User switched accounts
+          setWalletAddress(accounts[0]);
+          // Refresh data
+          if (factoryContract) {
+            fetchTokens();
           }
         }
       };
       
-      // Handle chain change
-      const handleChainChanged = (chainIdHex: string) => {
-        setChainId(chainIdHex);
-        window.location.reload();
+      const handleChainChanged = async (chainIdHex: string) => {
+        const parsedChainId = parseInt(chainIdHex, 16);
+        setChainId(parsedChainId);
+        
+        // Reinitialize when chain changes
+        if (window.ethereum) {
+          const web3Provider = new ethers.BrowserProvider(window.ethereum);
+          setProvider(web3Provider);
+          const web3Signer = await web3Provider.getSigner();
+          setSigner(web3Signer);
+          
+          // Initialize contract on the new chain
+          initializeContract(web3Provider, web3Signer);
+        }
       };
       
-      // Subscribe to events
+      // Add event listeners
       window.ethereum.on('accountsChanged', handleAccountsChanged);
       window.ethereum.on('chainChanged', handleChainChanged);
       
-      // Check if already connected
-      window.ethereum.request({ method: 'eth_accounts' })
-        .then(handleAccountsChanged)
-        .catch((err: any) => console.error('Error checking connected accounts:', err));
-      
-      // Cleanup event listeners
+      // Cleanup
       return () => {
         if (window.ethereum) {
           window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
@@ -196,7 +302,25 @@ export default function Marketplace() {
         }
       };
     }
-  }, [walletAddress, attestationService, kycService]);
+  }, [walletAddress]);
+  
+  // Refresh tokens every minute to catch new tokens
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (factoryContract) {
+        fetchTokens();
+      }
+    }, 60000); // 1 minute
+    
+    return () => clearInterval(interval);
+  }, [factoryContract]);
+  
+  // Watch for refresh trigger
+  useEffect(() => {
+    if (refreshTrigger > 0 && factoryContract) {
+      fetchTokens();
+    }
+  }, [refreshTrigger]);
   
   // Format timestamp to readable date
   const formatDate = (timestamp: number) => {
@@ -211,225 +335,286 @@ export default function Marketplace() {
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
   
-  // Get network name
-  const getNetworkName = () => {
-    switch (chainId) {
-      case '0x1':
-        return 'Ethereum Mainnet';
-      case '0x5':
-        return 'Goerli Testnet';
-      case '0x11':
-        return 'HashKey Chain Testnet';
-      case '0x12':
-        return 'HashKey Chain Mainnet';
-      default:
-        return 'Unknown Network';
+  // Get token image
+  const getTokenImage = (token: SecurityToken) => {
+    // Extract image from IPFS URI if possible
+    if (token.documentURI && token.documentURI.startsWith('ipfs://')) {
+      return `/images/property${(parseInt(token.id) % 3) + 1}.png`;
     }
+    
+    // Fallback images
+    return `/images/property${(parseInt(token.id) % 3) + 1}.png`;
+  };
+  
+  // Get background color based on token industry
+  const getBackgroundColor = (industry: string) => {
+    const industries = {
+      'Real Estate': 'bg-gradient-to-br from-blue-500 to-purple-600',
+      'Commercial': 'bg-gradient-to-br from-green-500 to-teal-600',
+      'Residential': 'bg-gradient-to-br from-orange-500 to-red-600',
+      'Industrial': 'bg-gradient-to-br from-gray-600 to-gray-800'
+    };
+    
+    return industries[industry as keyof typeof industries] || 'bg-gradient-to-br from-indigo-500 to-purple-600';
   };
   
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-900 text-white">
       <Head>
-        <title>Property Marketplace</title>
-        <meta name="description" content="View your attested property assets" />
+        <title>Security Token Marketplace | Polygon Amoy</title>
+        <meta name="description" content="Browse and invest in tokenized real-world assets on Polygon Amoy" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
       
       {/* Header */}
-      <div className="bg-white shadow-md">
+      <div className="bg-gray-800 shadow-xl border-b border-gray-700">
         <NavigationBar />
       </div>
       
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        {/* Page Title */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Your Property Assets</h1>
-          <p className="text-gray-600 mt-2">View all your attested real-world properties</p>
+      <main className="container mx-auto px-4 py-8">
+        {/* Page Header */}
+        <div className="mb-10 text-center">
+          <h1 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">
+            Security Token Marketplace
+          </h1>
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            Browse tokenized real-world assets on Polygon Amoy. Invest in fractional ownership of property and other high-value assets.
+          </p>
         </div>
         
-        {errorMessage && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            <p>{errorMessage}</p>
+        {/* Wallet Connection Status */}
+        <div className="mb-8">
+          {!walletConnected ? (
+            <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
+              <div className="text-center">
+                <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
+                <p className="text-gray-400 mb-6">Connect your wallet to browse tokenized assets on Polygon Amoy.</p>
+                <button
+                  onClick={connectWallet}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                </button>
+                {errorMessage && <p className="text-red-400 mt-3">{errorMessage}</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
+              <div className="flex flex-wrap justify-between items-center">
+                <div>
+                  <p className="text-gray-400">Connected Wallet:</p>
+                  <p className="font-mono text-sm">{walletAddress}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Network:</p>
+                  <div className="flex items-center">
+                    {chainId === POLYGON_AMOY_CHAIN_ID ? (
+                      <span className="flex items-center text-green-400">
+                        <span className="inline-block w-3 h-3 bg-green-400 rounded-full mr-2"></span>
+                        Polygon Amoy
+                      </span>
+                    ) : (
+                      <span className="flex items-center text-red-400">
+                        <span className="inline-block w-3 h-3 bg-red-400 rounded-full mr-2"></span>
+                        Wrong Network
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 sm:mt-0">
+                  {chainId !== POLYGON_AMOY_CHAIN_ID && (
+                    <button
+                      onClick={switchToPolygonAmoy}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
+                    >
+                      Switch to Polygon Amoy
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setRefreshTrigger(prev => prev + 1)}
+                    className="ml-3 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Create Token Button */}
+        {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID && (
+          <div className="mb-8 text-center">
+            <Link href="/listing">
+              <button className="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105">
+                Create New Security Token
+              </button>
+            </Link>
           </div>
         )}
         
-        {/* Wallet Connection Status */}
-        {!walletConnected ? (
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-bold mb-4">Connect Your Wallet</h2>
-            <p className="mb-4">Connect your wallet to view your attested properties.</p>
-            <button 
-              onClick={connectWallet} 
-              disabled={isLoading}
-              className="pixel-btn bg-[#6200EA] text-xs py-2 px-4 text-white disabled:opacity-50"
-            >
-              {isLoading ? 'Connecting...' : 'Connect Wallet'}
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* User Info and KYC Status */}
-            <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
-                <div>
-                  <h2 className="text-xl font-bold mb-2">Marketplace</h2>
-                  <p className="text-gray-600">Connected as: <span className="font-medium">{formatAddress(walletAddress)}</span></p>
-                  <p className="text-gray-600">Network: <span className="font-medium">{getNetworkName()}</span></p>
-                </div>
-                
-                {/* KYC Status */}
-                <div className="mt-4 md:mt-0 p-3 rounded-lg border flex items-center">
-                  {kycCompleted ? (
-                    <>
-                      <div className="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
-                      <div>
-                        <span className="font-medium text-green-600">KYC Verified</span>
-                        <p className="text-xs text-gray-500">Your identity has been verified</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="h-3 w-3 rounded-full bg-yellow-500 mr-2"></div>
-                      <div>
-                        <span className="font-medium text-yellow-600">KYC Not Completed</span>
-                        <p className="text-xs text-gray-500">
-                          <Link href="/listing" className="text-blue-500 underline">
-                            Complete KYC verification
-                          </Link>
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex space-x-4">
-                <Link href="/listing">
-                  <button className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                    Add New Property
-                  </button>
-                </Link>
-              </div>
+        {/* Tokens List */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-6 text-center">Available Security Tokens</h2>
+          
+          {isLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
             </div>
-            
-            {!kycCompleted ? (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-semibold mb-4">KYC Verification Required</h2>
-                <p className="text-gray-600 mb-4">
-                  You need to complete KYC verification before you can view your assets.
-                </p>
+          ) : tokens.length === 0 ? (
+            <div className="text-center py-16 bg-gray-800 rounded-lg border border-gray-700">
+              <h3 className="text-xl font-semibold mb-2">No tokens found</h3>
+              <p className="text-gray-400 mb-6">
+                {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID
+                  ? "There are no security tokens available yet. Be the first to create one!"
+                  : walletConnected
+                  ? "Please switch to Polygon Amoy network to view tokens."
+                  : "Connect your wallet to view available tokens."}
+              </p>
+              {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID && (
                 <Link href="/listing">
-                  <button className="px-6 py-3 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                    Complete KYC Verification
+                  <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg">
+                    Create Token
                   </button>
                 </Link>
-              </div>
-            ) : isLoading ? (
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading your property assets...</p>
-              </div>
-            ) : properties.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <h2 className="text-xl font-semibold mb-4">No Property Assets Found</h2>
-                <p className="text-gray-600 mb-4">
-                  You don't have any attested property assets yet.
-                </p>
-                <Link href="/listing">
-                  <button className="px-6 py-3 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                    Attest a Property
-                  </button>
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {properties.map((property, index) => (
-                  <div key={index} className="bg-white rounded-lg shadow-md overflow-hidden">
-                    {/* Property Image */}
-                    <div className="relative h-48">
-                      {property.photoHashes && property.photoHashes.length > 0 && property.photoHashes[0] !== '' ? (
-                        <img 
-                          src={`https://ipfs.io/ipfs/${property.photoHashes[0]}`} 
-                          alt={property.propertyName} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                          <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 22V12h6v10"></path>
-                          </svg>
-                        </div>
-                      )}
-                      
-                      {/* Verification Badge */}
-                      {property.verified && (
-                        <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
-                          Verified
-                        </div>
-                      )}
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {tokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700 transition-transform duration-300 hover:transform hover:scale-105"
+                >
+                  <div className={`h-40 relative ${getBackgroundColor(token.industry)}`}>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Image
+                        src={getTokenImage(token)}
+                        alt={token.name}
+                        width={200}
+                        height={160}
+                        objectFit="cover"
+                        className="mix-blend-overlay opacity-75"
+                      />
                     </div>
-                    
-                    {/* Property Details */}
-                    <div className="p-4">
-                      <h3 className="text-lg font-semibold text-gray-800 mb-2">{property.propertyName}</h3>
-                      
-                      <div className="mb-3">
-                        <div className="text-sm text-gray-500">Address</div>
-                        <div className="text-gray-700">{property.propertyAddress}</div>
-                      </div>
-                      
-                      <div className="mb-3">
-                        <div className="text-sm text-gray-500">Deed Number</div>
-                        <div className="text-gray-700">{property.deedNumber}</div>
-                      </div>
-                      
-                      {property.ownerName && (
-                        <div className="mb-3">
-                          <div className="text-sm text-gray-500">Owner</div>
-                          <div className="text-gray-700">{property.ownerName}</div>
-                        </div>
-                      )}
-                      
-                      <div className="mb-3">
-                        <div className="text-sm text-gray-500">Attestation Date</div>
-                        <div className="text-gray-700">{formatDate(property.timestamp)}</div>
-                      </div>
-                      
-                      <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between">
-                        <Link href={`/listing?property=${property.propertyIndex}`}>
-                          <button className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors text-sm">
-                            View Details
-                          </button>
-                        </Link>
-                        
-                        <Link href="/derivative">
-                          <button className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors text-sm">
-                            Create Derivative
-                          </button>
-                        </Link>
-                      </div>
+                    <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+                    <div className="absolute top-4 left-4 z-10">
+                      <span className="bg-black bg-opacity-70 px-3 py-1 rounded-full text-sm font-semibold">
+                        #{token.id}
+                      </span>
+                    </div>
+                    <div className="absolute top-4 right-4 z-10">
+                      <span className="bg-black bg-opacity-70 px-3 py-1 rounded-full text-sm font-semibold">
+                        {token.symbol}
+                      </span>
+                    </div>
+                    <div className="absolute bottom-4 left-4 right-4 z-10">
+                      <h3 className="text-xl font-bold text-white truncate">{token.name}</h3>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+                  
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-400">Industry:</span>
+                        <span className="font-medium">{token.industry}</span>
+                      </div>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-400">Asset Type:</span>
+                        <span className="font-medium">{token.assetType}</span>
+                      </div>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-400">Token Value:</span>
+                        <span className="font-medium">${parseFloat(token.tokenValue).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Total Supply:</span>
+                        <span className="font-medium">{parseInt(token.totalSupply).toLocaleString()} tokens</span>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-4 pt-4 border-t border-gray-700">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-400">Dividends:</span>
+                        <span className="font-medium">{token.dividendFrequency}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Maturity:</span>
+                        <span className="font-medium">{token.maturityDate}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="text-xs text-gray-500 mb-4">
+                      <div className="flex justify-between">
+                        <span>Created:</span>
+                        <span>{formatDate(token.createdAt)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Creator:</span>
+                        <span className="font-mono">{formatAddress(token.creator)}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 flex space-x-2">
+                      <a
+                        href={`https://amoy.polygonscan.com/token/${token.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex-1 text-center"
+                      >
+                        View on Explorer
+                      </a>
+                      <button
+                        onClick={() => router.push(`/token/${token.id}`)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex-1"
+                      >
+                        Details
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Marketplace Info */}
+        <div className="rounded-lg bg-gray-800 p-6 border border-gray-700">
+          <h2 className="text-xl font-semibold mb-4">About the Marketplace</h2>
+          <p className="text-gray-400 mb-4">
+            This marketplace showcases security tokens that comply with the ERC3643 standard, offering compliant tokenized assets on the Polygon Amoy network.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+              <h3 className="font-semibold mb-2">Automated Compliance</h3>
+              <p className="text-gray-400 text-sm">All tokens enforce KYC verification and regulatory compliance.</p>
+            </div>
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+              <h3 className="font-semibold mb-2">Transparent Ownership</h3>
+              <p className="text-gray-400 text-sm">Every asset is backed by verifiable real-world documentation.</p>
+            </div>
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+              <h3 className="font-semibold mb-2">Low Gas Fees</h3>
+              <p className="text-gray-400 text-sm">Polygon Amoy offers fast transactions with minimal gas costs.</p>
+            </div>
+          </div>
+        </div>
       </main>
       
       {/* Footer */}
-      <footer className="mt-auto bg-white border-t border-gray-200 py-6">
-        <div className="container mx-auto px-4 text-center text-gray-500 text-sm">
-          &copy; {new Date().getFullYear()} RWA Platform. All rights reserved.
+      <footer className="bg-gray-800 py-6 mt-16 border-t border-gray-700">
+        <div className="container mx-auto px-4 text-center text-gray-400 text-sm">
+          <p>© 2023 Security Token Marketplace. All rights reserved.</p>
+          <p className="mt-2">Running on Polygon Amoy Testnet</p>
         </div>
       </footer>
     </div>
   );
 }
 
-// Add type definition for window.ethereum
+// Add TypeScript definitions for window.ethereum
 declare global {
   interface Window {
     ethereum?: {
