@@ -237,14 +237,7 @@ export default function Dashboard() {
       
       {/* Header */}
       <div className="bg-white shadow-md">
-        <NavigationBar 
-          walletConnected={walletConnected}
-          walletAddress={walletAddress}
-          getNetworkName={getNetworkName}
-          formatAddress={formatAddress}
-          connectWallet={connectWallet}
-          isLoading={isLoading}
-        />
+        <NavigationBar />
       </div>
       
       {/* Main Content */}
