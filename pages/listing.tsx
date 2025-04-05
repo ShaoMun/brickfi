@@ -589,4 +589,330 @@ export default function Listing() {
     }
   };
 
-} 
+  // Extract document data with enhanced NLP for Date of Birth detection
+  const extractDocumentData = (text: string) => {
+    // Clean up the text - remove extra whitespace and make lowercase for easier matching
+    const cleanText = text.toLowerCase().replace(/\s+/g, ' ').trim();
+    console.log("Clean text:", cleanText); // For development debugging
+    
+    // Initialize extracted data object with additional birthYear field
+    const extractedData: { 
+      fullName?: string; 
+      age?: string;
+      dateOfBirth?: string;
+      birthYear?: string;  // Added specifically for year-only calculations
+      nationality?: string;
+      documentNumber?: string;
+      issuanceDate?: string;
+      expiryDate?: string;
+    } = {};
+    
+    // Split text into lines for better row/column analysis
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line);
+    
+    // Helper function to normalize text for better matching
+    const normalizeText = (text: string): string => {
+      return text
+        .replace(/\s+/g, ' ')
+        .replace(/[^\w\s]/g, ' ')
+        .trim()
+        .toLowerCase();
+    };
+    
+    // Function to find a line containing a specific label and extract the value after it
+    const findValueByLabel = (label: string, lineArray: string[]): string | null => {
+      const labelNormalized = normalizeText(label);
+      
+      // Look for exact matches first
+      for (const line of lineArray) {
+        const lineNormalized = normalizeText(line);
+        if (lineNormalized.includes(labelNormalized)) {
+          // Extract text after the label
+          const afterLabel = line.substring(line.toLowerCase().indexOf(label.toLowerCase()) + label.length);
+          const value = afterLabel.replace(/^[:;.,\s]+/, '').trim();
+          if (value) return value;
+        }
+      }
+      
+      // Look for matches with word boundaries
+      for (const line of lineArray) {
+        const match = line.match(new RegExp(`\\b${label}\\b[^a-zA-Z0-9]?\\s*([\\w\\s]+)`, 'i'));
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
+      
+      // Look for lines that start with the label
+      for (let i = 0; i < lineArray.length; i++) {
+        if (normalizeText(lineArray[i]).startsWith(labelNormalized)) {
+          // Check if value is on same line after label
+          const value = lineArray[i].substring(lineArray[i].toLowerCase().indexOf(label.toLowerCase()) + label.length)
+            .replace(/^[:;.,\s]+/, '').trim();
+          
+          if (value) return value;
+          
+          // If not found on same line, value might be on next line
+          if (i + 1 < lineArray.length) return lineArray[i + 1].trim();
+        }
+      }
+      
+      // Try fuzzy matching as a last resort
+      for (const line of lineArray) {
+        // Allow for OCR errors by checking if label is mostly contained in the line
+        const lineNormalized = normalizeText(line);
+        const labelWords = labelNormalized.split(' ');
+        let matchCount = 0;
+        
+        for (const word of labelWords) {
+          if (word.length > 2 && lineNormalized.includes(word)) { // Only check words longer than 2 chars
+            matchCount++;
+          }
+        }
+        
+        // If more than half of the label words are found, consider it a match
+        if (matchCount > labelWords.length / 2) {
+          const labelEndIndex = Math.max(...labelWords.map(word => {
+            const idx = lineNormalized.indexOf(word);
+            return idx >= 0 ? idx + word.length : -1;
+          }));
+          
+          if (labelEndIndex > 0) {
+            const value = line.substring(labelEndIndex).replace(/^[:;.,\s]+/, '').trim();
+            if (value) return value;
+          }
+        }
+      }
+      
+      return null;
+    };
+    
+    // Try to find MRZ lines with more aggressive pattern matching
+    let mrzLine = '';
+    
+    // First approach: Find lines that look like MRZ (long lines with uppercase and special chars)
+    const potentialMrzLines = lines.filter(line => {
+      // Typical MRZ line characteristics
+      return (line.length > 20 && 
+              (line.includes('P<') || 
+               line.includes('PK') || // Common OCR error for P<
+               line.includes('PL') || // Common OCR error for P<
+               line.includes('PC') || // Common OCR error for P<
+               line.toUpperCase() === line)); // All uppercase is a good indicator
+    });
+    
+    if (potentialMrzLines.length > 0) {
+      mrzLine = potentialMrzLines.reduce((longest, current) => 
+        current.length > longest.length ? current : longest, '');
+      console.log("Found potential MRZ line:", mrzLine);
+    }
+    
+    // Second approach: Look for country codes in the text as indicator of MRZ
+    if (!mrzLine) {
+      const commonCountryCodes = ['USA', 'MYS', 'GBR', 'CAN', 'AUS', 'NZL', 'DEU', 'FRA'];
+      for (const code of commonCountryCodes) {
+        const countryLine = lines.find(line => 
+          line.includes(`P<${code}`) || 
+          line.includes(`PK${code}`) || 
+          line.includes(`PL${code}`) ||
+          line.includes(`PC${code}`)
+        );
+        
+        if (countryLine) {
+          mrzLine = countryLine;
+          console.log("Found country code MRZ line:", mrzLine);
+          break;
+        }
+      }
+    }
+    
+    // If we still don't have MRZ, look more aggressively for passport line patterns
+    if (!mrzLine) {
+      // Replace common OCR mistakes before matching
+      const preprocessedText = text
+        .replace(/PK/g, 'P<')
+        .replace(/PL/g, 'P<')
+        .replace(/PC/g, 'P<');
+      
+      const mrzRegex = /P[<KLC][A-Z]{3}[A-Z0-9<KLC]+/g;
+      const mrzMatches = [...preprocessedText.matchAll(mrzRegex)];
+      
+      if (mrzMatches.length > 0) {
+        mrzLine = mrzMatches.reduce((best, current) => 
+          current[0].length > best.length ? current[0] : best, '');
+          
+        console.log("Extracted MRZ with aggressive pattern:", mrzLine);
+      }
+    }
+    
+    // Process MRZ line if found
+    if (mrzLine) {
+      // Pre-process the MRZ line to fix common OCR errors
+      // Replace K, L, C with < when they're likely to be separators
+      mrzLine = mrzLine
+        .replace(/PK/g, 'P<')
+        .replace(/PL/g, 'P<')
+        .replace(/PC/g, 'P<');
+      
+      // Extract country code and name portion with more lenient pattern
+      const mrzMatch = mrzLine.match(/P[<KLC]([A-Z]{3})([A-Z0-9<KLC\s]+)/);
+      
+      if (mrzMatch) {
+        const countryCode = mrzMatch[1];
+        let namePortion = mrzMatch[2];
+        
+        console.log("Country code:", countryCode);
+        console.log("Name portion before cleanup:", namePortion);
+        
+        // IMPROVED: Set nationality and citizenship based on country code
+        if (countryCode === 'MYS') {
+          extractedData.nationality = 'Malaysia';
+        } else if (countryCode === 'USA') {
+          extractedData.nationality = 'United States';
+        } else {
+          extractedData.nationality = countryCode; // Just use the code if we don't have a mapping
+        }
+        
+        // ENHANCED: More aggressive replacement of K, L, C characters with <
+        // First, handle the most common pattern: replace all K, L, C between letters
+        namePortion = namePortion.replace(/([A-Z0-9])[KLC]([A-Z0-9])/g, '$1<$2');
+        
+        // Handle sequences of K, L, C (likely multiple < symbols)
+        namePortion = namePortion.replace(/K{2,}/g, '<<');
+        namePortion = namePortion.replace(/L{2,}/g, '<<');
+        namePortion = namePortion.replace(/C{2,}/g, '<<');
+        
+        // Handle K, L, C at beginning or end of words
+        namePortion = namePortion.replace(/^([KLC])([A-Z0-9])/g, '<$2');
+        namePortion = namePortion.replace(/([A-Z0-9])([KLC])$/g, '$1<');
+        
+        // Second-pass replacements for remaining K, L, C in MRZ context
+        namePortion = namePortion.replace(/([A-Z0-9])K([A-Z0-9])/g, '$1<$2');
+        namePortion = namePortion.replace(/([A-Z0-9])L([A-Z0-9])/g, '$1<$2');
+        namePortion = namePortion.replace(/([A-Z0-9])C([A-Z0-9])/g, '$1<$2');
+        
+        console.log("Name portion after cleanup:", namePortion);
+        
+        // Process name portion - replace < with spaces and handle special cases
+        let fullName = namePortion.replace(/</g, ' ').trim();
+        
+        // Clean up multiple spaces
+        fullName = fullName.replace(/\s+/g, ' ');
+        
+        // Detect Malaysian name pattern (with BIN/BINTI)
+        const nameParts = fullName.split(' ');
+        const binIndex = nameParts.findIndex(part => 
+          part === 'BIN' || part === 'BINTI' || part === 'B' || part === 'BT');
+        
+        if (countryCode === 'MYS' && binIndex !== -1) {
+          // Format Malaysian name properly
+          const firstName = nameParts.slice(0, binIndex).join(' ');
+          let binPart = nameParts[binIndex];
+          // Expand shortened forms
+          if (binPart === 'B') binPart = 'BIN';
+          if (binPart === 'BT') binPart = 'BINTI';
+          
+          const lastName = nameParts.slice(binIndex + 1).join(' ');
+          fullName = `${firstName} ${binPart} ${lastName}`;
+        }
+        
+        extractedData.fullName = fullName;
+        console.log("Extracted name from MRZ:", fullName);
+      }
+      
+      // Try to extract date of birth from MRZ
+      // Common MRZ date format is YYMMDD
+      const dobRegex = /\d{6}/g;
+      const dobMatches = [...mrzLine.matchAll(dobRegex)];
+      
+      if (dobMatches.length > 0) {
+        // Use the first 6-digit sequence as potential DOB
+        let dobString = dobMatches[0][0];
+        console.log("Potential DOB from MRZ before correction:", dobString);
+        
+        // Correct common OCR errors in digits
+        dobString = dobString
+          .replace(/[gq]/gi, '9') // g and q often misread as 9
+          .replace(/[B]/gi, '8')  // B often misread as 8
+          .replace(/[G]/gi, '6')  // G often misread as 6
+          .replace(/[S]/gi, '5')  // S often misread as 5
+          .replace(/[l|I]/gi, '1'); // l and I often misread as 1
+        
+        console.log("Potential DOB from MRZ after correction:", dobString);
+        
+        if (dobString && dobString.length === 6) {
+          try {
+            // Extract year, month, day
+            let year = parseInt(dobString.substring(0, 2));
+            const month = parseInt(dobString.substring(2, 4)) - 1; // JS months are 0-based
+            const day = parseInt(dobString.substring(4, 6));
+            
+            // Determine century - MRZ typically uses 2-digit years
+            // If year > current 2-digit year + 20, assume 1900s, otherwise 2000s
+            // This handles the case where someone born in 2022 would have '22' as year
+            const currentYear = new Date().getFullYear();
+            const currentYearLastTwo = currentYear % 100;
+            
+            if (year > currentYearLastTwo + 20) {
+              year += 1900;
+            } else {
+              year += 2000;
+            }
+            
+            // Create date object
+            const dob = new Date(year, month, day);
+            
+            // Check if valid date
+            if (!isNaN(dob.getTime())) {
+              extractedData.dateOfBirth = dob.toISOString().split('T')[0]; // YYYY-MM-DD format
+              
+              // Calculate age
+              const today = new Date();
+              let age = today.getFullYear() - dob.getFullYear();
+              
+              // Adjust age if birthday hasn't occurred yet this year
+              if (today.getMonth() < dob.getMonth() || 
+                 (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())) {
+                age--;
+              }
+              
+              extractedData.age = String(age);
+              console.log("Calculated age from MRZ DOB:", age);
+            } else {
+              // If dob is invalid, just calculate age from year as a fallback
+              console.log("DOB invalid, falling back to year-only calculation");
+              const ageFromYear = currentYear - year;
+              extractedData.age = String(ageFromYear);
+              extractedData.dateOfBirth = `${year}-01-01`; // Approximate with Jan 1
+              console.log("Approximated age from year:", ageFromYear);
+            }
+          } catch (e) {
+            console.error("Error processing DOB from MRZ:", e);
+            // Fallback: Try to extract just the year and calculate approximate age
+            try {
+              const yearStr = dobString.substring(0, 2);
+              let year = parseInt(yearStr);
+              const currentYear = new Date().getFullYear();
+              
+              // Determine century
+              if (year > (currentYear % 100) + 20) {
+                year += 1900;
+              } else {
+                year += 2000;
+              }
+              
+              const approximateAge = currentYear - year;
+              if (approximateAge > 0 && approximateAge < 120) {
+                extractedData.age = String(approximateAge);
+                extractedData.dateOfBirth = `${year}-01-01`; // Approximate with Jan 1
+                console.log("Fallback age calculation from year:", approximateAge);
+              }
+            } catch (yearErr) {
+              console.error("Failed to extract year for age calculation:", yearErr);
+            }
+          }
+        }
+      }
+    }
+    
+    
+} }
