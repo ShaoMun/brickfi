@@ -1542,32 +1542,25 @@ export default function Listing() {
         const uniqueTimestamp = Date.now();
         const uniqueRandomId = Math.floor(Math.random() * 1000000);
         
-        // Create structured property data from the extracted information with guaranteed uniqueness
+        // Ensure we're using the user's input values for all fields
+        // This is critical for accurate token details
         const propertyData = {
-          propertyName: `${extractedProperties.deedNumber?.split('-')[0] || `Property_${Math.floor(Math.random() * 1000)}`}_${uniqueRandomId}`,
-          propertyDescription: `Property attested through blockchain verification at ${new Date(uniqueTimestamp).toISOString()}`,
-          propertyAddress: extractedProperties.address || propertyAddress,
-          deedNumber: extractedProperties.deedNumber || `DEED-${uniqueTimestamp.toString().substring(8)}-${uniqueRandomId}`,
-          ownerName: extractedProperties.ownerName || fullName,
-          taxId: extractedProperties.taxId || taxId,
-          fractionizeAmount: "1000", // Default fractionization amount
+          propertyName: propertyName.trim() || `PROP_${uniqueRandomId}`, // Use user-provided ticker or generate one
+          propertyDescription: propertyDescription.trim() || `Property at ${propertyLocation}`,
+          propertyAddress: propertyAddress.trim() || extractedProperties.address,
+          deedNumber: deedNumber.trim() || extractedProperties.deedNumber || `DEED-${uniqueTimestamp.toString().substring(8)}-${uniqueRandomId}`,
+          ownerName: fullName.trim() || extractedProperties.ownerName,
+          taxId: taxId.trim() || extractedProperties.taxId,
+          fractionizeAmount: fractionizeAmount.trim() || "1000", // Use user-provided total supply
           photoHashes,
-          // Add new property details
-          propertyLocation: propertyLocation,
-          propertySize: propertySize,
-          propertyCondition: propertyCondition,
-          // Add a unique identifier to prevent duplicate attestations
+          // Use user's input for property details
+          propertyLocation: propertyLocation.trim(), // User-provided location
+          propertySize: propertySize.trim(), // User-provided size
+          propertyCondition: propertyCondition, // User-selected condition
           uniqueId: `${uniqueTimestamp}-${uniqueRandomId}`
         };
         
-        console.log("Submitting attestation with unique data:", propertyData);
-        
-        // Update state with the data that will be submitted
-        setPropertyName(propertyData.propertyName);
-        setPropertyDescription(propertyData.propertyDescription);
-        setPropertyAddress(propertyData.propertyAddress);
-        setDeedNumber(propertyData.deedNumber);
-        setFractionizeAmount(propertyData.fractionizeAmount);
+        console.log("Submitting attestation with data:", propertyData);
         
         // Ensure attestation service is available
         if (!attestationService) {
@@ -1583,17 +1576,16 @@ export default function Listing() {
           setAttestationTxHash(result.txHash || null);
           setAttestationComplete(true);
           
-          // Add this new code to get property value and set up minting preview
-          // Get property value from oracle
+          // Calculate property value immediately based on the user's input
           const propValue = await getPropertyValueFromOracle();
           setTotalValueLocked(propValue);
           
-          // Calculate token price
+          // Calculate price per token based on total supply
           const supply = parseInt(fractionizeAmount) || 1000;
           const price = (parseFloat(propValue) / supply).toFixed(4);
           setTokenPrice(price);
           
-          // Show mint preview overlay
+          // Show mint preview overlay with accurate user-provided data
           setShowMintPreview(true);
           
           // Set success message
@@ -1949,24 +1941,54 @@ export default function Listing() {
   // Add the property value function - add near other calculation functions
   const getPropertyValueFromOracle = async (): Promise<string> => {
     try {
-      if (!attestationService) return "0";
+      // Get values directly from state variables to ensure accuracy
+      const location = propertyLocation.trim();
+      const size = propertySize.trim();
+      const condition = propertyCondition;
       
-      // Call the price oracle with property details
-      const oraclePrice = await attestationService.getPropertyValuation(
-        propertyLocation,
-        propertySize,
-        propertyCondition
-      );
+      // Log values to verify we're using correct inputs
+      console.log("Calculating property value with:", { location, size, condition });
       
-      return oraclePrice || "0";
+      // Call the price oracle with user-provided property details
+      let oraclePrice = "0";
+      if (attestationService) {
+        oraclePrice = await attestationService.getPropertyValuation(
+          location,
+          size,
+          condition
+        );
+      } else {
+        console.warn("Attestation service not initialized, using fallback calculation");
+      }
+      
+      // If oracle gives a valid price, use it
+      if (oraclePrice && parseFloat(oraclePrice) > 0) {
+        return oraclePrice;
+      }
+      
+      // Fallback calculation if oracle call fails
+      const sizeNumeric = parseInt(size.replace(/[^\d]/g, '')) || 1000;
+      const conditionValue = parseInt(condition) || 3;
+      const basePrice = 100000; // Base property value
+      
+      // Location-based multiplier
+      let locationMultiplier = 1.0;
+      const highValueLocations = ['New York', 'San Francisco', 'Los Angeles', 'Miami', 'London', 'Tokyo'];
+      const mediumValueLocations = ['Chicago', 'Dallas', 'Seattle', 'Boston', 'Paris', 'Berlin'];
+      
+      if (highValueLocations.some(loc => location.toLowerCase().includes(loc.toLowerCase()))) {
+        locationMultiplier = 1.5;
+      } else if (mediumValueLocations.some(loc => location.toLowerCase().includes(loc.toLowerCase()))) {
+        locationMultiplier = 1.2;
+      }
+      
+      // Calculate property value based on size, condition and location
+      const calculatedValue = basePrice * (sizeNumeric / 1000) * (conditionValue / 3) * locationMultiplier;
+      return calculatedValue.toFixed(2);
     } catch (error) {
       console.error("Error getting property value from oracle:", error);
-      // Fallback to a calculation based on size and condition
-      const sizeNumeric = parseInt(propertySize.replace(/[^\d]/g, '')) || 1000;
-      const condition = parseInt(propertyCondition) || 3;
-      const basePrice = 100000; // Base property value
-      const calculatedValue = basePrice * (sizeNumeric / 1000) * (condition / 3);
-      return calculatedValue.toFixed(2);
+      // Simple fallback value
+      return "100000.00";
     }
   };
 
