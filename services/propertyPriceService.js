@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { ethers, Contract, formatEther, parseEther } from 'ethers';
 import PropertyPriceOracleABI from '../contracts/abis/PropertyPriceOracle.json';
 
 const PROPERTY_PRICE_ORACLE_ADDRESS = "0x5E93dDD7250a1d954618fab590831445Bae69458";
@@ -12,7 +12,7 @@ class PropertyPriceService {
 
   initialize() {
     if (typeof window !== 'undefined' && window.ethereum) {
-      this.provider = new ethers.providers.Web3Provider(window.ethereum);
+      this.provider = new ethers.BrowserProvider(window.ethereum);
       this.contract = new ethers.Contract(
         PROPERTY_PRICE_ORACLE_ADDRESS,
         PropertyPriceOracleABI,
@@ -40,7 +40,7 @@ class PropertyPriceService {
         throw new Error('Contract not initialized');
       }
       const price = await this.contract.getPropertyPrice(location);
-      return ethers.utils.formatEther(price);
+      return formatEther(price);
     } catch (error) {
       console.error('Error getting property price:', error);
       throw error;
@@ -54,7 +54,7 @@ class PropertyPriceService {
       }
       
       const connectedContract = this.contract.connect(signer);
-      const priceInWei = ethers.utils.parseEther(price.toString());
+      const priceInWei = parseEther(price.toString());
       
       const tx = await connectedContract.setPropertyPrice(location, priceInWei);
       return await tx.wait();
@@ -71,7 +71,7 @@ class PropertyPriceService {
       }
       
       const connectedContract = this.contract.connect(signer);
-      const pricesInWei = prices.map(price => ethers.utils.parseEther(price.toString()));
+      const pricesInWei = prices.map(price => parseEther(price.toString()));
       
       const tx = await connectedContract.setBatchPropertyPrices(locations, pricesInWei);
       return await tx.wait();

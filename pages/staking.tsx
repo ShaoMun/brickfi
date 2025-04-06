@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import { ethers, Contract, formatEther, parseEther } from 'ethers';
 import Head from 'next/head';
 import NavigationBar from '../components/NavigationBar';
 
@@ -27,12 +27,15 @@ const ERC20_ABI = [
 const STAKING_CONTRACT_ADDRESS = "0x34199f76AcC3299d6c0157b32Ff9f713D7b44715";
 const CUSD_TOKEN_ADDRESS = "0x471EcE3750Da237f93B8E339c536989b8978a438"; // cUSD on mainnet
 
+// Type definitions
+type ContractState = Contract | null;
+
 export default function Staking() {
   // State variables
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
-  const [stakingContract, setStakingContract] = useState(null);
-  const [tokenContract, setTokenContract] = useState(null);
+  const [stakingContract, setStakingContract] = useState<ContractState>(null);
+  const [tokenContract, setTokenContract] = useState<ContractState>(null);
   const [tokenSymbol, setTokenSymbol] = useState('');
   const [tokenBalance, setTokenBalance] = useState('0');
   const [stakedBalance, setStakedBalance] = useState('0');
@@ -76,10 +79,12 @@ export default function Staking() {
   };
 
   // Initialize contracts
-  const initializeContracts = async (address) => {
+  const initializeContracts = async (address: string) => {
     try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
+      if (!window.ethereum) return;
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
       
       // Initialize staking contract
       const staking = new ethers.Contract(STAKING_CONTRACT_ADDRESS, STAKING_ABI, signer);
@@ -102,7 +107,7 @@ export default function Staking() {
   };
 
   // Refresh data
-  const refreshData = async (address, staking, token) => {
+  const refreshData = async (address?: string, staking?: Contract, token?: Contract) => {
     try {
       // Use existing contract instances if provided, otherwise use state
       const stakingInstance = staking || stakingContract;
@@ -113,30 +118,30 @@ export default function Staking() {
       
       // Get token balance
       const balance = await tokenInstance.balanceOf(userAddress);
-      setTokenBalance(ethers.utils.formatEther(balance));
+      setTokenBalance(formatEther(balance));
       
       // Get staked balance
       const staked = await stakingInstance.balanceOf(userAddress);
-      setStakedBalance(ethers.utils.formatEther(staked));
+      setStakedBalance(formatEther(staked));
       
       // Get earned rewards
       const earned = await stakingInstance.earned(userAddress);
-      setEarnedRewards(ethers.utils.formatEther(earned));
+      setEarnedRewards(formatEther(earned));
       
       // Get allowance
       const currentAllowance = await tokenInstance.allowance(userAddress, STAKING_CONTRACT_ADDRESS);
-      setAllowance(ethers.utils.formatEther(currentAllowance));
+      setAllowance(formatEther(currentAllowance));
       
       // Get lock time left
       const stakingTime = await stakingInstance.stakingTime(userAddress);
       const lockPeriod = await stakingInstance.lockPeriod();
-      const unlockTime = stakingTime.add(lockPeriod).toNumber();
+      const unlockTime = Number(stakingTime) + Number(lockPeriod);
       const now = Math.floor(Date.now() / 1000);
       setLockTimeLeft(Math.max(0, unlockTime - now));
       
       // Get total staked
       const total = await stakingInstance.totalSupply();
-      setTotalStaked(ethers.utils.formatEther(total));
+      setTotalStaked(formatEther(total));
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
@@ -145,21 +150,26 @@ export default function Staking() {
   // Approve tokens
   const approveTokens = async () => {
     try {
+      if (!tokenContract) return;
+      
       setIsApproving(true);
       setErrorMessage('');
       
       // Approve a large amount (max uint256)
+      const maxUint256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
       const tx = await tokenContract.approve(
         STAKING_CONTRACT_ADDRESS, 
-        ethers.constants.MaxUint256
+        maxUint256
       );
       
       await tx.wait();
       alert(`Successfully approved ${tokenSymbol} for staking!`);
       
       // Refresh allowance
-      const newAllowance = await tokenContract.allowance(walletAddress, STAKING_CONTRACT_ADDRESS);
-      setAllowance(ethers.utils.formatEther(newAllowance));
+      if (walletAddress) {
+        const newAllowance = await tokenContract.allowance(walletAddress, STAKING_CONTRACT_ADDRESS);
+        setAllowance(formatEther(newAllowance));
+      }
     } catch (error) {
       console.error('Approval error:', error);
       setErrorMessage('Failed to approve tokens');
@@ -170,7 +180,7 @@ export default function Staking() {
 
   // Stake tokens
   const stakeTokens = async () => {
-    if (!stakeAmount || parseFloat(stakeAmount) <= 0) {
+    if (!stakingContract || !stakeAmount || parseFloat(stakeAmount) <= 0) {
       setErrorMessage('Please enter a valid amount to stake');
       return;
     }
@@ -179,10 +189,10 @@ export default function Staking() {
       setIsStaking(true);
       setErrorMessage('');
       
-      const amount = ethers.utils.parseEther(stakeAmount);
+      const amount = parseEther(stakeAmount);
       
       // Check if allowance is sufficient
-      if (ethers.utils.parseEther(allowance).lt(amount)) {
+      if (parseEther(allowance) < amount) {
         setErrorMessage('Insufficient allowance. Please approve tokens first.');
         setIsStaking(false);
         return;
@@ -206,7 +216,7 @@ export default function Staking() {
 
   // Withdraw tokens
   const withdrawTokens = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+    if (!stakingContract || !withdrawAmount || parseFloat(withdrawAmount) <= 0) {
       setErrorMessage('Please enter a valid amount to withdraw');
       return;
     }
@@ -215,10 +225,10 @@ export default function Staking() {
       setIsWithdrawing(true);
       setErrorMessage('');
       
-      const amount = ethers.utils.parseEther(withdrawAmount);
+      const amount = parseEther(withdrawAmount);
       
       // Check if staked balance is sufficient
-      if (ethers.utils.parseEther(stakedBalance).lt(amount)) {
+      if (parseEther(stakedBalance) < amount) {
         setErrorMessage('Insufficient staked balance');
         setIsWithdrawing(false);
         return;
@@ -242,6 +252,11 @@ export default function Staking() {
 
   // Claim rewards
   const claimRewards = async () => {
+    if (!stakingContract) {
+      setErrorMessage('Contract not initialized');
+      return;
+    }
+    
     try {
       setIsClaiming(true);
       setErrorMessage('');
@@ -254,31 +269,16 @@ export default function Staking() {
       // Refresh data
       refreshData();
     } catch (error) {
-      console.error('Claim rewards error:', error);
+      console.error('Claim error:', error);
       setErrorMessage('Failed to claim rewards');
     } finally {
       setIsClaiming(false);
     }
   };
 
-  // Set up periodic data refresh
-  useEffect(() => {
-    if (walletConnected && stakingContract && tokenContract) {
-      // Refresh initially
-      refreshData();
-      
-      // Set up interval for periodic refreshes
-      const intervalId = setInterval(() => {
-        refreshData();
-      }, 15000); // Every 15 seconds
-      
-      return () => clearInterval(intervalId);
-    }
-  }, [walletConnected, stakingContract, tokenContract]);
-  
-  // Format time left for display
-  const formatTimeLeft = (seconds) => {
-    if (seconds <= 0) return 'No lock period';
+  // Format time left
+  const formatTimeLeft = (seconds: number) => {
+    if (seconds <= 0) return 'Unlocked';
     
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
@@ -287,129 +287,147 @@ export default function Staking() {
     return `${days}d ${hours}h ${minutes}m`;
   };
 
+  // Refresh data periodically
+  useEffect(() => {
+    if (walletConnected) {
+      refreshData();
+      
+      const interval = setInterval(() => {
+        refreshData();
+      }, 30000); // Every 30 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [walletConnected]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 to-indigo-900 text-white">
+    <div className="min-h-screen bg-gray-900 text-white">
       <Head>
         <title>Celo Staking Pool</title>
-        <meta name="description" content="Stake your Celo tokens and earn rewards" />
+        <meta name="description" content="Stake Celo and earn rewards" />
       </Head>
       
       <NavigationBar />
       
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-center mb-8">Celo Staking Pool</h1>
+        <h1 className="text-4xl font-bold mb-6 text-center">Celo Staking Pool</h1>
         
         {!walletConnected ? (
-          <div className="max-w-md mx-auto bg-blue-800 rounded-lg p-6 shadow-lg">
-            <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
-            <p className="mb-6">Connect your wallet to stake tokens and earn rewards.</p>
+          <div className="flex flex-col items-center justify-center space-y-4 p-6 bg-gray-800 rounded-lg">
+            <p className="text-xl">Connect your wallet to start staking</p>
             <button 
               onClick={connectWallet}
-              className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-md transition duration-300"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
             >
               Connect Wallet
             </button>
-            {errorMessage && <p className="mt-4 text-red-400">{errorMessage}</p>}
+            {errorMessage && <p className="text-red-500">{errorMessage}</p>}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-blue-800 rounded-lg p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4">Your Stats</h2>
-              <div className="space-y-3">
-                <p>Wallet: {walletAddress.substring(0, 6)}...{walletAddress.substring(walletAddress.length - 4)}</p>
-                <p>{tokenSymbol} Balance: {parseFloat(tokenBalance).toFixed(4)}</p>
-                <p>Staked Balance: {parseFloat(stakedBalance).toFixed(4)}</p>
-                <p>Earned Rewards: {parseFloat(earnedRewards).toFixed(6)}</p>
-                <p>Unlock Time: {formatTimeLeft(lockTimeLeft)}</p>
+          <div className="space-y-8">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Balance Info */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <h2 className="text-2xl font-bold mb-4">Your Balance</h2>
+                <div className="space-y-2">
+                  <p>Connected: {walletAddress.substring(0, 6)}...{walletAddress.substring(walletAddress.length - 4)}</p>
+                  <p>Token Balance: {tokenBalance} {tokenSymbol}</p>
+                  <p>Staked Balance: {stakedBalance} {tokenSymbol}</p>
+                  <p>Earned Rewards: {earnedRewards} {tokenSymbol}</p>
+                  <p>Lock Status: {formatTimeLeft(lockTimeLeft)}</p>
+                  <p>Total Pool: {totalStaked} {tokenSymbol}</p>
+                </div>
               </div>
               
-              {parseFloat(allowance) === 0 && (
-                <div className="mt-6">
+              {/* Approve */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <h2 className="text-2xl font-bold mb-4">Step 1: Approve Tokens</h2>
+                <p className="mb-4">
+                  Approve {tokenSymbol} to be used by the staking contract. This is a one-time step.
+                </p>
+                <button 
+                  onClick={approveTokens}
+                  disabled={isApproving}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded w-full disabled:opacity-50"
+                >
+                  {isApproving ? 'Approving...' : 'Approve Tokens'}
+                </button>
+              </div>
+            </div>
+            
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Stake */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <h2 className="text-2xl font-bold mb-4">Step 2: Stake</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-gray-300 mb-2">Amount to Stake</label>
+                    <input 
+                      type="number" 
+                      value={stakeAmount}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                      placeholder="Enter amount" 
+                      className="w-full p-2 bg-gray-700 rounded text-white"
+                    />
+                  </div>
                   <button 
-                    onClick={approveTokens}
-                    disabled={isApproving}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50"
+                    onClick={stakeTokens}
+                    disabled={isStaking}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full disabled:opacity-50"
                   >
-                    {isApproving ? 'Approving...' : `Approve ${tokenSymbol} for Staking`}
+                    {isStaking ? 'Staking...' : 'Stake Tokens'}
                   </button>
                 </div>
-              )}
+              </div>
               
-              {parseFloat(earnedRewards) > 0 && (
-                <div className="mt-6">
+              {/* Withdraw */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <h2 className="text-2xl font-bold mb-4">Step 3: Withdraw</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-gray-300 mb-2">Amount to Withdraw</label>
+                    <input 
+                      type="number" 
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      placeholder="Enter amount" 
+                      className="w-full p-2 bg-gray-700 rounded text-white"
+                    />
+                  </div>
+                  <button 
+                    onClick={withdrawTokens}
+                    disabled={isWithdrawing || lockTimeLeft > 0}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded w-full disabled:opacity-50"
+                  >
+                    {isWithdrawing ? 'Withdrawing...' : 'Withdraw Tokens'}
+                  </button>
+                  {lockTimeLeft > 0 && (
+                    <p className="text-yellow-500 text-sm">Still locked for {formatTimeLeft(lockTimeLeft)}</p>
+                  )}
+                </div>
+              </div>
+              
+              {/* Claim Rewards */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <h2 className="text-2xl font-bold mb-4">Step 4: Claim Rewards</h2>
+                <div className="space-y-4">
+                  <p>Current rewards: {earnedRewards} {tokenSymbol}</p>
                   <button 
                     onClick={claimRewards}
-                    disabled={isClaiming}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50"
+                    disabled={isClaiming || parseFloat(earnedRewards) <= 0}
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded w-full disabled:opacity-50"
                   >
-                    {isClaiming ? 'Claiming...' : `Claim ${parseFloat(earnedRewards).toFixed(6)} ${tokenSymbol} Rewards`}
+                    {isClaiming ? 'Claiming...' : 'Claim Rewards'}
                   </button>
-                </div>
-              )}
-            </div>
-            
-            <div className="bg-blue-800 rounded-lg p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4">Stake & Withdraw</h2>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-2">Stake {tokenSymbol}</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    value={stakeAmount}
-                    onChange={(e) => setStakeAmount(e.target.value)}
-                    placeholder={`Amount of ${tokenSymbol}`}
-                    className="flex-1 bg-blue-900 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={stakeTokens}
-                    disabled={isStaking || parseFloat(allowance) === 0}
-                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50"
-                  >
-                    {isStaking ? 'Staking...' : 'Stake'}
-                  </button>
-                </div>
-              </div>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-2">Withdraw {tokenSymbol}</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    placeholder={`Amount of ${tokenSymbol}`}
-                    className="flex-1 bg-blue-900 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={withdrawTokens}
-                    disabled={isWithdrawing || parseFloat(stakedBalance) === 0}
-                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50"
-                  >
-                    {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
-                  </button>
-                </div>
-                {lockTimeLeft > 0 && <p className="text-xs text-yellow-300 mt-1">Note: Withdrawals are locked until {formatTimeLeft(lockTimeLeft)}</p>}
-              </div>
-              
-              {errorMessage && <p className="text-red-400 mt-4">{errorMessage}</p>}
-            </div>
-            
-            <div className="bg-blue-800 rounded-lg p-6 shadow-lg md:col-span-2">
-              <h2 className="text-xl font-semibold mb-4">Pool Info</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p>Total Staked: {parseFloat(totalStaked).toFixed(4)} {tokenSymbol}</p>
-                  <p>Token Address: {CUSD_TOKEN_ADDRESS.substring(0, 6)}...{CUSD_TOKEN_ADDRESS.substring(CUSD_TOKEN_ADDRESS.length - 4)}</p>
-                  <p>Contract Address: {STAKING_CONTRACT_ADDRESS.substring(0, 6)}...{STAKING_CONTRACT_ADDRESS.substring(STAKING_CONTRACT_ADDRESS.length - 4)}</p>
-                </div>
-                <div>
-                  <p>Lock Period: 1 day</p>
-                  <p>Reward Rate: 0.001 tokens per second</p>
-                  <p>Network: Celo Mainnet</p>
                 </div>
               </div>
             </div>
+            
+            {errorMessage && (
+              <div className="bg-red-800 p-4 rounded-lg">
+                <p className="text-red-200">{errorMessage}</p>
+              </div>
+            )}
           </div>
         )}
       </main>
