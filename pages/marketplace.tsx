@@ -6,6 +6,18 @@ import Image from 'next/image';
 import NavigationBar from '../components/NavigationBar';
 import { useRouter } from 'next/router';
 
+// Type declaration for window.ethereum
+declare global {
+  interface Window {
+    ethereum?: {
+      isMetaMask?: boolean;
+      request: (request: { method: string; params?: any[] }) => Promise<any>;
+      on: (eventName: string, listener: (...args: any[]) => void) => void;
+      removeListener: (eventName: string, listener: (...args: any[]) => void) => void;
+    };
+  }
+}
+
 // Define Security Token interface
 interface SecurityToken {
   id: string;
@@ -38,6 +50,11 @@ export default function Marketplace() {
   const [provider, setProvider] = useState<ethers.Provider | null>(null);
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isNetworkSwitching, setIsNetworkSwitching] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<'correct'|'wrong'|'unknown'>('unknown');
+  const [lastMintTime, setLastMintTime] = useState<number>(0);
+  const [recentlyMinted, setRecentlyMinted] = useState(false);
+  const [mintTxHash, setMintTxHash] = useState<string | null>(null);
   
   // Constants
   const POLYGON_AMOY_CHAIN_ID = 80002;
@@ -51,6 +68,53 @@ export default function Marketplace() {
     "event TokenCreated(uint256 indexed id, address indexed tokenAddress, string name, string symbol, uint256 totalSupply, address indexed creator)"
   ];
 
+  // Check for recent minting transaction
+  useEffect(() => {
+    // Check if user just minted a token from localStorage
+    const lastMintTxHash = localStorage.getItem('lastMintTxHash');
+    const lastMintTimestamp = localStorage.getItem('lastMintTimestamp');
+    
+    if (lastMintTxHash && lastMintTimestamp) {
+      const timeSinceMint = Date.now() - parseInt(lastMintTimestamp);
+      
+      // If minted within the last 5 minutes, consider it recent
+      if (timeSinceMint < 5 * 60 * 1000) {
+        setRecentlyMinted(true);
+        setMintTxHash(lastMintTxHash);
+        setLastMintTime(parseInt(lastMintTimestamp));
+        
+        // Trigger immediate refresh
+        setRefreshTrigger(prev => prev + 1);
+        
+        // Start an immediate polling sequence for new token
+        let pollCount = 0;
+        const pollInterval = setInterval(() => {
+          if (factoryContract) {
+            console.log(`Polling for new token (attempt ${pollCount + 1})...`);
+            fetchTokens(factoryContract);
+            pollCount++;
+            
+            // Stop polling after 10 attempts (50 seconds total)
+            if (pollCount >= 10) {
+              clearInterval(pollInterval);
+            }
+          }
+        }, 5000);
+        
+        // Clear localStorage after we've started polling
+        setTimeout(() => {
+          localStorage.removeItem('lastMintTxHash');
+          localStorage.removeItem('lastMintTimestamp');
+        }, 10000);
+        
+        // Clean up interval if component unmounts
+        return () => {
+          clearInterval(pollInterval);
+        };
+      }
+    }
+  }, [factoryContract]); // Added factoryContract as dependency
+  
   // Connect wallet function
   const connectWallet = async () => {
     try {
@@ -72,13 +136,15 @@ export default function Marketplace() {
           setChainId(parsedChainId);
           
           // Initialize provider and signer
-          const web3Provider = new ethers.BrowserProvider(window.ethereum);
-          setProvider(web3Provider);
-          const web3Signer = await web3Provider.getSigner();
-          setSigner(web3Signer);
-          
-          // Initialize contract
-          initializeContract(web3Provider, web3Signer);
+          if (window.ethereum) {
+            const web3Provider = new ethers.BrowserProvider(window.ethereum as any);
+            setProvider(web3Provider);
+            const web3Signer = await web3Provider.getSigner();
+            setSigner(web3Signer);
+            
+            // Initialize contract
+            initializeContract(web3Provider, web3Signer);
+          }
         }
       } else {
         setErrorMessage('Ethereum wallet not detected. Please install MetaMask.');
@@ -97,11 +163,39 @@ export default function Marketplace() {
     signer: ethers.Signer
   ) => {
     try {
+      // Check if we're on the correct network
+      const network = await provider.getNetwork();
+      const currentChainId = parseInt(network.chainId.toString());
+      
+      // If we're not on Polygon Amoy, let's set the network status
+      if (currentChainId !== POLYGON_AMOY_CHAIN_ID) {
+        setNetworkStatus('wrong');
+        console.log(`Connected to chain ${currentChainId}, but need to be on Polygon Amoy (${POLYGON_AMOY_CHAIN_ID})`);
+        return;
+      } else {
+        setNetworkStatus('correct');
+      }
+      
       const contract = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, signer);
       setFactoryContract(contract);
       
       // Fetch tokens after initializing contract
       await fetchTokens(contract);
+      
+      // If we recently minted a token, fetch more aggressively to make it show up faster
+      if (recentlyMinted) {
+        // Set up repeated fetching for new tokens
+        const fetchInterval = setInterval(() => {
+          console.log("Auto-refreshing after mint...");
+          fetchTokens(contract);
+        }, 5000); // Every 5 seconds
+        
+        // Stop refreshing after 30 seconds
+        setTimeout(() => {
+          clearInterval(fetchInterval);
+          setRecentlyMinted(false);
+        }, 30000);
+      }
     } catch (error) {
       console.error('Contract initialization error:', error);
       setErrorMessage('Failed to initialize contract');
@@ -110,15 +204,47 @@ export default function Marketplace() {
   
   // Switch to Polygon Amoy network
   const switchToPolygonAmoy = async () => {
-    if (!window.ethereum) return;
+    if (typeof window === 'undefined' || !window.ethereum) return;
     
     try {
+      setIsNetworkSwitching(true);
+      setErrorMessage('');
+      console.log('Switching to Polygon Amoy network...');
+      
       // First try to switch to the network
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}` }],
       });
+      
+      // Wait for the network to switch (this helps with timing issues)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify we're on the correct network
+      const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+      const parsedChainId = parseInt(chainIdHex, 16);
+      
+      if (parsedChainId !== POLYGON_AMOY_CHAIN_ID) {
+        throw new Error(`Failed to switch to Polygon Amoy. Current chain ID: ${parsedChainId}`);
+      }
+      
+      console.log('Successfully switched to Polygon Amoy');
+      setNetworkStatus('correct');
+      
+      // Re-initialize provider, signer and contract after network switch
+      if (window.ethereum) {
+        const web3Provider = new ethers.BrowserProvider(window.ethereum as any);
+        setProvider(web3Provider);
+        const web3Signer = await web3Provider.getSigner();
+        setSigner(web3Signer);
+        
+        // Initialize contract on Polygon Amoy
+        await initializeContract(web3Provider, web3Signer);
+      }
+      
     } catch (switchError: any) {
+      console.error('Switch network error:', switchError);
+      
       // This error code indicates that the chain has not been added to MetaMask
       if (switchError.code === 4902) {
         try {
@@ -138,19 +264,41 @@ export default function Marketplace() {
               },
             ],
           });
+          
+          // Wait for the network to be added
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
           // Try switching again after adding
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}` }],
           });
+          
+          // Wait again after switching
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Re-initialize
+          if (window.ethereum) {
+            const web3Provider = new ethers.BrowserProvider(window.ethereum as any);
+            setProvider(web3Provider);
+            const web3Signer = await web3Provider.getSigner();
+            setSigner(web3Signer);
+            await initializeContract(web3Provider, web3Signer);
+          }
+          
+          setNetworkStatus('correct');
         } catch (addError) {
           console.error('Failed to add Polygon Amoy network:', addError);
           setErrorMessage('Failed to add Polygon Amoy network to your wallet.');
+          setNetworkStatus('wrong');
         }
       } else {
         console.error('Failed to switch to Polygon Amoy:', switchError);
-        setErrorMessage('Failed to switch to Polygon Amoy.');
+        setErrorMessage('Failed to switch to Polygon Amoy. Please try manually switching in your wallet.');
+        setNetworkStatus('wrong');
       }
+    } finally {
+      setIsNetworkSwitching(false);
     }
   };
   
@@ -158,8 +306,8 @@ export default function Marketplace() {
   const fetchTokens = async (contract = factoryContract) => {
     if (!contract) return;
     
-    setIsLoading(true);
-    try {
+        setIsLoading(true);
+        try {
       // Get token count
       const count = await contract.getTokenCount();
       console.log(`Found ${count.toString()} tokens on the factory`);
@@ -167,6 +315,14 @@ export default function Marketplace() {
       // Get all token addresses
       const tokenAddresses = await contract.getAllTokens();
       console.log('Token addresses:', tokenAddresses);
+      
+      // If we recently minted and don't see any tokens yet, try again in a bit
+      if (recentlyMinted && tokenAddresses.length === 0) {
+        setTimeout(() => {
+          console.log("No tokens found after mint, retrying...");
+          fetchTokens(contract);
+        }, 5000);
+      }
       
       const tokenPromises = tokenAddresses.map(async (address: string) => {
         // Get token data for each address
@@ -187,7 +343,7 @@ export default function Marketplace() {
           dividendFrequency: data.dividendFrequency,
           maturityDate: data.maturityDate,
           creator: data.creator,
-          createdAt: data.createdAt.toNumber()
+          createdAt: Number(data.createdAt)
         };
       });
       
@@ -197,12 +353,12 @@ export default function Marketplace() {
       const sortedTokens = tokenData.sort((a, b) => b.createdAt - a.createdAt);
       
       setTokens(sortedTokens);
-    } catch (error) {
+        } catch (error) {
       console.error('Error fetching tokens:', error);
       setErrorMessage('Failed to fetch token data');
-    } finally {
-      setIsLoading(false);
-    }
+        } finally {
+          setIsLoading(false);
+        }
   };
   
   // Handle events to detect new tokens
@@ -243,14 +399,24 @@ export default function Marketplace() {
                 const parsedChainId = parseInt(chainIdHex, 16);
                 setChainId(parsedChainId);
                 
-                // Initialize provider and signer
-                const web3Provider = new ethers.BrowserProvider(window.ethereum);
-                setProvider(web3Provider);
-                const web3Signer = await web3Provider.getSigner();
-                setSigner(web3Signer);
+                // Check if we're on the correct network
+                if (parsedChainId === POLYGON_AMOY_CHAIN_ID) {
+                  setNetworkStatus('correct');
+                } else {
+                  setNetworkStatus('wrong');
+                  console.warn(`Connected to wrong network. Expected ${POLYGON_AMOY_CHAIN_ID}, got ${parsedChainId}`);
+                }
                 
-                // Initialize contract
-                initializeContract(web3Provider, web3Signer);
+                // Initialize provider and signer
+                if (window.ethereum) {
+                  const web3Provider = new ethers.BrowserProvider(window.ethereum as any);
+                  setProvider(web3Provider);
+                  const web3Signer = await web3Provider.getSigner();
+                  setSigner(web3Signer);
+                  
+                  // Initialize contract
+                  initializeContract(web3Provider, web3Signer);
+                }
               })
               .catch(console.error);
           }
@@ -264,6 +430,7 @@ export default function Marketplace() {
           setWalletConnected(false);
           setWalletAddress('');
           setTokens([]);
+          setNetworkStatus('unknown');
         } else if (accounts[0] !== walletAddress) {
           // User switched accounts
           setWalletAddress(accounts[0]);
@@ -278,9 +445,17 @@ export default function Marketplace() {
         const parsedChainId = parseInt(chainIdHex, 16);
         setChainId(parsedChainId);
         
+        // Check if we're on the correct network
+        if (parsedChainId === POLYGON_AMOY_CHAIN_ID) {
+          setNetworkStatus('correct');
+        } else {
+          setNetworkStatus('wrong');
+          console.warn(`Chain changed to wrong network. Expected ${POLYGON_AMOY_CHAIN_ID}, got ${parsedChainId}`);
+        }
+        
         // Reinitialize when chain changes
         if (window.ethereum) {
-          const web3Provider = new ethers.BrowserProvider(window.ethereum);
+          const web3Provider = new ethers.BrowserProvider(window.ethereum as any);
           setProvider(web3Provider);
           const web3Signer = await web3Provider.getSigner();
           setSigner(web3Signer);
@@ -291,16 +466,18 @@ export default function Marketplace() {
       };
       
       // Add event listeners
+      if (window.ethereum) {
       window.ethereum.on('accountsChanged', handleAccountsChanged);
       window.ethereum.on('chainChanged', handleChainChanged);
       
-      // Cleanup
+        // Cleanup
       return () => {
         if (window.ethereum) {
           window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
           window.ethereum.removeListener('chainChanged', handleChainChanged);
         }
       };
+    }
     }
   }, [walletAddress]);
   
@@ -385,46 +562,51 @@ export default function Marketplace() {
         
         {/* Wallet Connection Status */}
         <div className="mb-8">
-          {!walletConnected ? (
+        {!walletConnected ? (
             <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
               <div className="text-center">
                 <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
                 <p className="text-gray-400 mb-6">Connect your wallet to browse tokenized assets on Polygon Amoy.</p>
-                <button
-                  onClick={connectWallet}
+            <button 
+              onClick={connectWallet} 
                   className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
-                </button>
+              disabled={isLoading}
+            >
+              {isLoading ? 'Connecting...' : 'Connect Wallet'}
+            </button>
                 {errorMessage && <p className="text-red-400 mt-3">{errorMessage}</p>}
               </div>
-            </div>
-          ) : (
+          </div>
+        ) : (
             <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
               <div className="flex flex-wrap justify-between items-center">
                 <div>
                   <p className="text-gray-400">Connected Wallet:</p>
                   <p className="font-mono text-sm">{walletAddress}</p>
                 </div>
-                <div>
+                      <div>
                   <p className="text-gray-400">Network:</p>
                   <div className="flex items-center">
-                    {chainId === POLYGON_AMOY_CHAIN_ID ? (
+                    {networkStatus === 'correct' ? (
                       <span className="flex items-center text-green-400">
                         <span className="inline-block w-3 h-3 bg-green-400 rounded-full mr-2"></span>
                         Polygon Amoy
                       </span>
-                    ) : (
+                    ) : networkStatus === 'wrong' ? (
                       <span className="flex items-center text-red-400">
                         <span className="inline-block w-3 h-3 bg-red-400 rounded-full mr-2"></span>
                         Wrong Network
                       </span>
-                    )}
-                  </div>
+                    ) : (
+                      <span className="flex items-center text-gray-400">
+                        <span className="inline-block w-3 h-3 bg-gray-400 rounded-full mr-2"></span>
+                        Connecting...
+                      </span>
+                  )}
                 </div>
+              </div>
                 <div className="mt-4 sm:mt-0">
-                  {chainId !== POLYGON_AMOY_CHAIN_ID && (
+                  {networkStatus === 'wrong' && (
                     <button
                       onClick={switchToPolygonAmoy}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
@@ -442,17 +624,17 @@ export default function Marketplace() {
               </div>
             </div>
           )}
-        </div>
-        
+            </div>
+            
         {/* Create Token Button */}
-        {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID && (
+        {walletConnected && networkStatus === 'correct' && (
           <div className="mb-8 text-center">
-            <Link href="/listing">
+                <Link href="/listing">
               <button className="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105">
                 Create New Security Token
-              </button>
-            </Link>
-          </div>
+                  </button>
+                </Link>
+              </div>
         )}
         
         {/* Tokens List */}
@@ -462,27 +644,27 @@ export default function Marketplace() {
           {isLoading ? (
             <div className="flex justify-center items-center py-20">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-            </div>
+              </div>
           ) : tokens.length === 0 ? (
             <div className="text-center py-16 bg-gray-800 rounded-lg border border-gray-700">
               <h3 className="text-xl font-semibold mb-2">No tokens found</h3>
               <p className="text-gray-400 mb-6">
-                {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID
+                {walletConnected && networkStatus === 'correct'
                   ? "There are no security tokens available yet. Be the first to create one!"
                   : walletConnected
                   ? "Please switch to Polygon Amoy network to view tokens."
                   : "Connect your wallet to view available tokens."}
               </p>
-              {walletConnected && chainId === POLYGON_AMOY_CHAIN_ID && (
+              {walletConnected && networkStatus === 'correct' && (
                 <Link href="/listing">
                   <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg">
                     Create Token
                   </button>
                 </Link>
               )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {tokens.map((token) => (
                 <div
                   key={token.id}
@@ -513,7 +695,7 @@ export default function Marketplace() {
                     <div className="absolute bottom-4 left-4 right-4 z-10">
                       <h3 className="text-xl font-bold text-white truncate">{token.name}</h3>
                     </div>
-                  </div>
+                        </div>
                   
                   <div className="p-6">
                     <div className="mb-4">
@@ -532,7 +714,7 @@ export default function Marketplace() {
                       <div className="flex justify-between">
                         <span className="text-gray-400">Total Supply:</span>
                         <span className="font-medium">{parseInt(token.totalSupply).toLocaleString()} tokens</span>
-                      </div>
+                        </div>
                     </div>
                     
                     <div className="mb-4 pt-4 border-t border-gray-700">
@@ -544,7 +726,7 @@ export default function Marketplace() {
                         <span className="text-gray-400">Maturity:</span>
                         <span className="font-medium">{token.maturityDate}</span>
                       </div>
-                    </div>
+                        </div>
                     
                     <div className="text-xs text-gray-500 mb-4">
                       <div className="flex justify-between">
@@ -555,8 +737,8 @@ export default function Marketplace() {
                         <span>Creator:</span>
                         <span className="font-mono">{formatAddress(token.creator)}</span>
                       </div>
-                    </div>
-                    
+                      </div>
+                      
                     <div className="mt-6 flex space-x-2">
                       <a
                         href={`https://amoy.polygonscan.com/token/${token.address}`}
@@ -571,13 +753,13 @@ export default function Marketplace() {
                         className="bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex-1"
                       >
                         Details
-                      </button>
+                          </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
         </div>
         
         {/* Marketplace Info */}
@@ -612,18 +794,4 @@ export default function Marketplace() {
       </footer>
     </div>
   );
-}
-
-// Add TypeScript definitions for window.ethereum
-declare global {
-  interface Window {
-    ethereum?: {
-      isMetaMask?: boolean;
-      request: (request: { method: string; params?: any[] }) => Promise<any>;
-      on: (eventName: string, listener: (...args: any[]) => void) => void;
-      removeListener: (eventName: string, listener: (...args: any[]) => void) => void;
-      selectedAddress?: string;
-      chainId?: string;
-    };
-  }
 } 

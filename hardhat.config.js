@@ -1,8 +1,12 @@
 require("@nomicfoundation/hardhat-toolbox");
+// require("@nomiclabs/hardhat-waffle"); // Commented out to avoid conflict with hardhat-chai-matchers
+// require("@nomiclabs/hardhat-etherscan"); // Commented out to avoid conflict with hardhat-verify
+require("@nomicfoundation/hardhat-verify"); // Add hardhat-verify for contract verification
 require("dotenv").config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000000";
 const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
+const CELOSCAN_API_KEY = process.env.CELOSCAN_API_KEY || "G1I9V6U8G62H5MNRZW5WVU679TIGDP8G4F";
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -61,13 +65,27 @@ module.exports = {
       chainId: 133,
       gasPrice: 20000000000, // 20 gwei
       timeout: 120000 // Longer timeout (2 minutes)
+    },
+    celoAlfajores: {
+      url: "https://alfajores-forno.celo-testnet.org",
+      accounts: [process.env.PRIVATE_KEY],
+      chainId: 44787,
+      gasPrice: 0.5 * 10**9
+    },
+    celo: {
+      url: "https://forno.celo.org",
+      accounts: [process.env.PRIVATE_KEY],
+      chainId: 42220,
+      gasPrice: 0.5 * 10**9
     }
   },
   etherscan: {
     apiKey: {
       polygonAmoy: POLYGONSCAN_API_KEY,
       polygonMumbai: POLYGONSCAN_API_KEY,
-      hashkeyChainTestnet: "hashkeyscan" // Not actually used, but required by config
+      hashkeyChainTestnet: "hashkeyscan", // Not actually used, but required by config
+      celo: CELOSCAN_API_KEY,
+      alfajores: CELOSCAN_API_KEY
     },
     customChains: [
       {
@@ -84,6 +102,22 @@ module.exports = {
         urls: {
           apiURL: "https://testnet-explorer-api.hashkey.cloud/api",
           browserURL: "https://testnet-explorer.hashkey.cloud"
+        }
+      },
+      {
+        network: "celo",
+        chainId: 42220,
+        urls: {
+          apiURL: "https://api.celoscan.io/api",
+          browserURL: "https://celoscan.io"
+        }
+      },
+      {
+        network: "alfajores",
+        chainId: 44787,
+        urls: {
+          apiURL: "https://api-alfajores.celoscan.io/api",
+          browserURL: "https://alfajores.celoscan.io"
         }
       }
     ]

@@ -1,77 +1,94 @@
-# ERC3643 Security Token Factory
+# Celo Staking Pool
 
-This project contains a SecurityTokenFactory contract for creating ERC3643-compliant security tokens on the Polygon Amoy testnet.
+A simple staking pool contract for Celo mainnet that allows users to stake tokens (CELO, cUSD, cEUR, or cREAL) and earn rewards.
 
-## Prerequisites
+## Features
 
-- Node.js (v14+)
-- npm or yarn
-- An account with MATIC on Polygon Amoy testnet
+- Stake tokens and earn rewards
+- Configurable reward rate
+- Configurable lock period
+- Emergency functions (pause, unpause, emergency withdraw)
+- Owner can fund the contract with rewards
+
+## Celo Mainnet Token Addresses
+
+- CELO (native token): `0x471EcE3750Da237f93B8E339c536989b8978a438`
+- cUSD (stablecoin): `0x765DE816845861e75A25fCA122bb6898B8B1282a`
+- cEUR (stablecoin): `0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73`
+- cREAL (stablecoin): `0xe8537a3d056DA446677B9E9d6c5dB704EaAb4787`
 
 ## Setup
 
 1. Clone the repository:
-```bash
-git clone [your-repo-url]
-cd [repo-name]
-```
+   ```bash
+   git clone <repository-url>
+   cd celo-staking-pool
+   ```
 
 2. Install dependencies:
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
-3. Create a `.env` file:
-```bash
-cp .env.example .env
-```
-
-4. Fill in your environment variables in `.env`:
-   - `PRIVATE_KEY`: Your private key (without 0x prefix)
-   - `POLYGON_AMOY_RPC_URL`: Polygon Amoy RPC URL (default should work)
-   - `POLYGONSCAN_API_KEY`: Your Polygonscan API key (optional, for verification)
+3. Create a `.env` file with your private key and API key:
+   ```
+   PRIVATE_KEY=your_private_key_here_without_0x_prefix
+   CELOSCAN_API_KEY=your_celoscan_api_key_here
+   ```
 
 ## Deployment
 
-1. Compile the contracts:
-```bash
-npx hardhat compile
-```
+### Test on Alfajores Testnet First
 
-2. Deploy to Polygon Amoy testnet:
-```bash
-npx hardhat run scripts/deploy-token-factory.js --network amoy
-```
+1. Get testnet tokens from the [Celo Faucet](https://faucet.celo.org)
 
-3. The deployment script will output:
-   - The address of the deployed contract
-   - A verification command
-   - The deployment information is saved to `deployments/polygon-amoy-deployment.json`
+2. Deploy to Alfajores:
+   ```bash
+   npm run deploy:alfajores
+   ```
 
-## Contract Verification
+3. Verify contract on Alfajores Explorer:
+   ```bash
+   npx hardhat verify --network celoAlfajores [CONTRACT_ADDRESS] [TOKEN_ADDRESS]
+   ```
 
-Verify your contract on Polygonscan:
+### Deploy to Mainnet
 
-```bash
-npx hardhat verify --network amoy [CONTRACT_ADDRESS]
-```
+1. Ensure you have real CELO tokens for gas fees.
 
-## Updating the Frontend
+2. Deploy to Celo mainnet:
+   ```bash
+   npm run deploy:mainnet
+   ```
 
-After deployment, update the token factory address in your frontend code:
+3. Verify contract on Celo Explorer:
+   ```bash
+   npx hardhat verify --network celo [CONTRACT_ADDRESS] [TOKEN_ADDRESS]
+   ```
 
-1. Open `pages/listing.tsx`
-2. Find the line with `const tokenFactoryAddress = "0x0000000000000000000000000000000000000000";`
-3. Replace it with the actual deployed contract address
+## Post-Deployment Steps
 
-## Usage
+1. Fund the contract with reward tokens:
+   - Approve the contract to spend your tokens
+   - Call the `fundRewards` function with the desired amount
 
-The SecurityTokenFactory contract allows you to:
+2. Set an appropriate reward rate:
+   - Call the `setRewardRate` function with the desired rate
+   - Default rate is 0.001 tokens per second (1e15)
 
-1. Create new Security Tokens with the required compliance features
-2. Track created tokens
-3. Retrieve information about deployed tokens
+3. Users can now stake tokens and earn rewards:
+   - They must approve the contract to spend their tokens
+   - They can call `stake` to stake tokens
+   - They can call `getReward` to claim rewards
+   - They can call `withdraw` to withdraw their tokens after the lock period
+
+## Security Considerations
+
+- The contract includes emergency functions that only the owner can call
+- The owner can pause the contract in case of emergency
+- Users can still withdraw their funds when the contract is paused
+- The owner can withdraw all tokens in case of emergency
 
 ## License
 
-MIT
+This project is licensed under the MIT License.

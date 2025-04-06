@@ -334,6 +334,22 @@ export default function Listing() {
       return;
     }
     
+    // Check if we came from marketplace to handle network transition better
+    const referrer = document.referrer;
+    const isFromMarketplace = referrer.includes('/marketplace');
+    
+    if (isFromMarketplace) {
+      const confirmSwitch = window.confirm(
+        "You're coming from the Marketplace (Polygon Amoy) page. Switching to HashKey Chain Testnet will disconnect you from Polygon Amoy. \n\nDo you want to continue?"
+      );
+      
+      if (!confirmSwitch) {
+        // User chose not to switch networks
+        console.log("User declined to switch networks from Marketplace");
+        return;
+      }
+    }
+    
     try {
       // HashKey Chain Testnet parameters
       const hashKeyChainId = "0x1388d1"; // 1,280,209 in decimal
@@ -2150,6 +2166,9 @@ export default function Listing() {
               metadataLength: metadataString.length
             });
             
+            // Add a delay to ensure the network is fully ready before estimation
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             const gasEstimate = await tokenFactory.createSecurityToken.estimateGas(
               simplifiedMetadata.name,
               simplifiedMetadata.symbol,
@@ -2165,8 +2184,8 @@ export default function Listing() {
             
             console.log("Gas estimate:", gasEstimate.toString());
             
-            // Add 20% buffer to gas estimate
-            const gasLimit = Math.floor(Number(gasEstimate) * 1.2);
+            // Add 30% buffer to gas estimate (increased from 20%)
+            const gasLimit = Math.floor(Number(gasEstimate) * 1.3);
             
             setAttestationMessage("Sending transaction to create token...");
             
@@ -2188,8 +2207,14 @@ export default function Listing() {
             console.log("Transaction sent:", tx.hash);
             setAttestationMessage(`Transaction submitted. Waiting for confirmation... Tx: ${tx.hash}`);
             
-            // Wait for transaction to be mined
-            const receipt = await tx.wait();
+            // Wait for transaction to be mined with longer timeout
+            const receipt = await Promise.race([
+              tx.wait(),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Transaction confirmation timeout")), 60000)
+              )
+            ]) as any;
+            
             console.log("Transaction confirmed:", receipt);
             
             // Success handling
@@ -2197,11 +2222,23 @@ export default function Listing() {
             setMintTxHash(receipt.hash);
             setAttestationMessage(`ERC3643 security token minted successfully! Transaction hash: ${receipt.hash}`);
             
-            // After successful minting, redirect to marketplace after a delay
+            // Store the transaction info in localStorage for persistence
+            localStorage.setItem('lastMintTxHash', receipt.hash);
+            localStorage.setItem('lastMintTimestamp', Date.now().toString());
+            
+            // After successful minting, redirect to marketplace after a longer delay (20 seconds)
+            setAttestationMessage(`Token minted successfully! Please wait while we prepare the marketplace...`);
+            
+            // Increased delay from 5s to 15s
             setTimeout(() => {
-              setShowMintPreview(false);
-              router.push('/marketplace');
-            }, 5000);
+              setAttestationMessage(`Token minted successfully! Redirecting to marketplace...`);
+              
+              // Redirect with another delay to ensure transaction propagation
+              setTimeout(() => {
+                setShowMintPreview(false);
+                router.push('/marketplace');
+              }, 5000);
+            }, 15000);
             
           } catch (estimateError: any) {
             // Gas estimation failed, which indicates the transaction would fail
@@ -2225,10 +2262,14 @@ export default function Listing() {
               setMintTxHash(`0x${Math.random().toString(16).substring(2, 42)}`);
               setAttestationMessage(`Demo mode: Simulated successful token minting!`);
               
+              // Extended delay in demo mode too
               setTimeout(() => {
-                setShowMintPreview(false);
-                router.push('/marketplace');
-              }, 5000);
+                setAttestationMessage(`Demo mode: Token minted! Redirecting to marketplace...`);
+                setTimeout(() => {
+                  setShowMintPreview(false);
+                  router.push('/marketplace');
+                }, 5000);
+              }, 15000);
               
               return;
             }
@@ -2254,10 +2295,14 @@ export default function Listing() {
             setMintTxHash(`0x${Math.random().toString(16).substring(2, 42)}`);
             setAttestationMessage(`Demo mode: Simulated successful token minting!`);
             
+            // Extended delay in demo mode for contract errors too
             setTimeout(() => {
-              setShowMintPreview(false);
-              router.push('/marketplace');
-            }, 5000);
+              setAttestationMessage(`Demo mode: Token minted! Redirecting to marketplace...`);
+              setTimeout(() => {
+                setShowMintPreview(false);
+                router.push('/marketplace');
+              }, 5000);
+            }, 15000);
             
             return;
           }
@@ -2280,10 +2325,14 @@ export default function Listing() {
         setMintTxHash(`0x${Math.random().toString(16).substring(2, 42)}`);
         setAttestationMessage(`Demo mode: Simulated successful token minting!`);
         
+        // Extended delay in demo mode too
         setTimeout(() => {
-          setShowMintPreview(false);
-          router.push('/marketplace');
-        }, 5000);
+          setAttestationMessage(`Demo mode: Token minted! Redirecting to marketplace...`);
+          setTimeout(() => {
+            setShowMintPreview(false);
+            router.push('/marketplace');
+          }, 5000);
+        }, 15000);
         
         return;
       }

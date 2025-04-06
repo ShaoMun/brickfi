@@ -429,7 +429,75 @@ export class AttestationService {
         const requiredChainId = 133; // HashKey Chain Testnet
         if (chainId !== requiredChainId) {
           console.error(`Wrong network detected. Connected to chain ID ${chainId}, but HashKey Chain Testnet (${requiredChainId}) is required`);
-          alert(`Please switch to HashKey Chain Testnet (Chain ID: ${requiredChainId}) to use the attestation service.`);
+          alert(`Please switch to HashKey Chain Testnet (Chain ID: ${requiredChainId}) to use the attestation service.\n\nThe marketplace uses Polygon Amoy, but property attestations specifically require HashKey Chain.`);
+          
+          // Try to help the user switch networks
+          try {
+            // Check if we're on the marketplace page - don't auto-switch if we are
+            const currentPath = window.location.pathname;
+            if (currentPath.includes('/marketplace')) {
+              console.log('On marketplace page - not switching to HashKey Chain automatically');
+              return false;
+            }
+            
+            await ethereumWindow.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: `0x${requiredChainId.toString(16)}` }],
+            });
+            console.log('Successfully requested network switch to HashKey Chain Testnet');
+            
+            // Wait for network switch and try again
+            setTimeout(async () => {
+              await this.init();
+            }, 2000);
+            
+            return false;
+          } catch (switchError: any) {
+            // This error code indicates that the chain has not been added to MetaMask
+            if (switchError.code === 4902) {
+              try {
+                // Check if we're on the marketplace page - don't auto-add if we are
+                const currentPath = window.location.pathname;
+                if (currentPath.includes('/marketplace')) {
+                  console.log('On marketplace page - not adding HashKey Chain automatically');
+                  return false;
+                }
+                
+                await ethereumWindow.ethereum.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [
+                    {
+                      chainId: `0x${requiredChainId.toString(16)}`,
+                      chainName: 'HashKey Chain Testnet',
+                      nativeCurrency: {
+                        name: 'HashKey Token',
+                        symbol: 'tHSK',
+                        decimals: 18,
+                      },
+                      rpcUrls: ['https://testnet-rpc.hashkey.cloud'],
+                      blockExplorerUrls: ['https://testnet-explorer.hashkey.cloud'],
+                    },
+                  ],
+                });
+                
+                // Try switching again after adding
+                await ethereumWindow.ethereum.request({
+                  method: 'wallet_switchEthereumChain',
+                  params: [{ chainId: `0x${requiredChainId.toString(16)}` }],
+                });
+                
+                // Wait for network switch and try again
+                setTimeout(async () => {
+                  await this.init();
+                }, 2000);
+                
+              } catch (addError) {
+                console.error('Failed to add HashKey Chain Testnet:', addError);
+              }
+            }
+            console.error('Failed to switch to HashKey Chain Testnet:', switchError);
+          }
+          
           return false;
         }
       } catch (networkError) {

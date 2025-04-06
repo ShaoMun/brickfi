@@ -74,8 +74,21 @@ export class KYCService {
         const networkChainId = Number(network.chainId);
         const requiredChainId = 133; // HashKey Chain Testnet
         if (networkChainId !== requiredChainId) {
-          console.warn(`Not on HashKey Chain Testnet. Connected to chain ID ${networkChainId}, expected ${requiredChainId}`);
-          console.warn('KYC verification may not work correctly on this network');
+          // Check if we're on the marketplace page before showing warnings
+          let isMarketplacePage = false;
+          
+          if (typeof window !== 'undefined') {
+            const currentPath = window.location.pathname;
+            isMarketplacePage = currentPath.includes('/marketplace');
+          }
+          
+          if (!isMarketplacePage) {
+            console.warn(`Not on HashKey Chain Testnet. Connected to chain ID ${networkChainId}, expected ${requiredChainId}`);
+            console.warn('KYC verification may not work correctly on this network');
+          } else {
+            console.log('On marketplace page - using mock KYC implementation silently');
+          }
+          
           this.setupMockImplementation();
           return;
         }

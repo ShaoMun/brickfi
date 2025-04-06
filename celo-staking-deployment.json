@@ -1,0 +1,7 @@
+{
+  "network": "celo_mainnet",
+  "contractName": "CeloStakingPool",
+  "address": "0x34199f76AcC3299d6c0157b32Ff9f713D7b44715",
+  "timestamp": "2025-04-06T00:16:28.295Z",
+  "celoTokenAddress": "0x471EcE3750Da237f93B8E339c536989b8978a438"
+}
