@@ -55,8 +55,10 @@ BrickFi addresses the slow, exclusive, and centralized nature of traditional inv
 ---
 
 ## 🔁 Flow Breakdown
+[workflow.pdf](https://github.com/user-attachments/files/19619246/workflow.pdf)
 
 ### 1. ✅ zkKYC Verification
+[zkKYC.pdf](https://github.com/user-attachments/files/19619228/zkKYC.pdf)
 
 **Why**: Ensure regulation-compliant, private identity verification.
 
@@ -81,6 +83,7 @@ BrickFi addresses the slow, exclusive, and centralized nature of traditional inv
 ---
 
 ### 3. 📜 Legal Document Verification
+[zkAttestation.pdf](https://github.com/user-attachments/files/19619247/zkAttestation.pdf)
 
 **Why**: Prevents fraud and ensures asset-token binding.
 
